@@ -15,9 +15,10 @@
   var EPIS = [];
   var PUESTOS = [];
   var DOCS_INTERES = [];
+  var DOCUMENTOS_CAE = null; // se carga bajo demanda (flujo de empresa externa y panel de admin)
 
   var ui = {
-    screen: "loading", // loading | login | crear-password | admin-login | home | admin | epis | riesgos | interes | perfil | solicitud
+    screen: "loading", // loading | login | crear-password | admin-login | home | admin | epis | riesgos | interes | perfil | solicitud | externa
     rol: null, // 'trabajador' | 'admin'
     trabajador: null, // fila completa de public.trabajadores del usuario actual
     pendingNumero: null,
@@ -34,12 +35,16 @@
     adminTab: "resumen",
     adminTrabajadores: null, // lista completa, solo admin
     adminHistorial: null, // movimientos recientes, solo admin
-    filtroHistorial: ""
+    adminVisitas: null, // informes de visita, solo admin
+    filtroHistorial: "",
+    filtroVisitas: "",
+    externa: null, // estado del registro de visita de empresa externa
+    lastInforme: null // último informe de visita generado, para la pantalla de éxito + imprimir
   };
   var ADMIN_TABS = [
     ["resumen", "Resumen"], ["trabajadores", "Trabajadores"], ["puestos", "Puestos"],
-    ["epis", "Catálogo EPIs"], ["interes", "Info. interés"], ["historial", "Historial EPIs"],
-    ["empresa", "Empresa"], ["ajustes", "Ajustes"]
+    ["epis", "Catálogo EPIs"], ["interes", "Info. interés"], ["externas", "Empresas externas"],
+    ["historial", "Historial EPIs"], ["empresa", "Empresa"], ["ajustes", "Ajustes"]
   ];
   var CATEGORIAS = Object.keys(CATEGORIA_ICONO);
 
@@ -150,6 +155,26 @@
     if (r1.data) EMPRESA = r1.data;
     var r2 = await sb.from("cae_config").select("*").eq("id", 1).single();
     if (r2.data) CAE_CONFIG = r2.data;
+  }
+  function avisoLegalTexto() {
+    var txt = (CAE_CONFIG && CAE_CONFIG.aviso_legal) || "";
+    return txt.replace(/\{EMPRESA\}/g, EMPRESA.nombre || "la empresa").replace(/\{MESES\}/g, String((CAE_CONFIG && CAE_CONFIG.retencion_meses) || 48));
+  }
+  async function cargarDocumentosCAE() {
+    var res = await sb.from("documentos_cae").select("*").order("titulo");
+    DOCUMENTOS_CAE = res.data || [];
+    render();
+  }
+  function getDocCAE(id) {
+    if (!DOCUMENTOS_CAE) return null;
+    for (var i = 0; i < DOCUMENTOS_CAE.length; i++) if (DOCUMENTOS_CAE[i].id === id) return DOCUMENTOS_CAE[i];
+    return null;
+  }
+  async function cargarAdminVisitas() {
+    ui.adminVisitas = null; render();
+    var res = await sb.from("informes_visita").select("*").order("ts", { ascending: false }).limit(200);
+    ui.adminVisitas = res.data || [];
+    render();
   }
 
   async function resolverSesion() {
@@ -283,7 +308,94 @@
 
   /* ---------- login admin ---------- */
   function goAdminLogin() { ui.screen = "admin-login"; ui.adminError = ""; render(); }
-  function goToLogin() { ui.screen = "login"; ui.loginError = ""; render(); }
+  function goToLogin() { ui.screen = "login"; ui.loginError = ""; ui.externa = null; render(); }
+
+  /* ---------- empresa externa (CAE) ---------- */
+  function goExternaInicio() {
+    ui.screen = "externa";
+    ui.externa = { step: "datos", draftNombre: "", draftDni: "", draftEmpresa: "", firma: null };
+    ui.formError = "";
+    render();
+    if (DOCUMENTOS_CAE === null) cargarDocumentosCAE();
+  }
+  async function submitExternaDatos(form) {
+    var nombre = form.nombre.value.trim();
+    var dni = form.dni.value.trim();
+    var empresaNombre = form.empresaNombre.value.trim();
+    if (ui.externa) { ui.externa.draftNombre = nombre; ui.externa.draftDni = dni; ui.externa.draftEmpresa = empresaNombre; }
+    if (!nombre || !dni || !empresaNombre) { ui.formError = "Rellena todos los campos."; render(); return; }
+    if (!ui.externa || !ui.externa.firma) { ui.formError = "Es necesario firmar antes de continuar."; render(); return; }
+    ui.busy = true; ui.formError = ""; render();
+
+    var path = "visitas/" + uuid() + ".png";
+    var blob = dataUrlToBlob(ui.externa.firma);
+    var upRes = await sb.storage.from("firmas").upload(path, blob, { contentType: "image/png", upsert: true });
+    if (upRes.error) {
+      ui.busy = false;
+      ui.formError = "No se ha podido guardar la firma: " + upRes.error.message;
+      render();
+      return;
+    }
+    var res = await sb.rpc("cae_iniciar_visita", { p_dni: dni, p_nombre: nombre, p_empresa: empresaNombre, p_firma_url: path });
+    ui.busy = false;
+    if (res.error) {
+      ui.formError = "No se ha podido registrar la visita: " + res.error.message;
+      render();
+      return;
+    }
+    var data = res.data;
+    if (data.ya_registrado) {
+      ui.externa = { step: "ya-registrado" };
+      render();
+      return;
+    }
+    ui.externa = { step: "documentos", draftNombre: nombre, draftDni: dni, draftEmpresa: empresaNombre, firma: ui.externa.firma, visitanteId: data.visitante_id, pendientes: data.pendientes || [], confirmadas: [] };
+    ui.formError = "";
+    if (ui.externa.pendientes.length === 0) {
+      await generarInformeVisita(data.visitante_id, []);
+      return;
+    }
+    render();
+  }
+  function openExternaDoc(docId) { ui.modal = { mode: "externa-doc", docId: docId }; render(); }
+  async function confirmarExternaDoc(docId) {
+    if (!ui.externa) return;
+    var idx = -1;
+    for (var i = 0; i < ui.externa.pendientes.length; i++) if (ui.externa.pendientes[i].id === docId) idx = i;
+    if (idx === -1) return;
+    var doc = ui.externa.pendientes[idx];
+    ui.busy = true; render();
+    var res = await sb.rpc("cae_confirmar_documento", { p_visitante_id: ui.externa.visitanteId, p_documento_id: docId });
+    ui.busy = false;
+    if (res.error) { toast("No se ha podido confirmar el documento: " + res.error.message, 6000); render(); return; }
+    ui.externa.pendientes.splice(idx, 1);
+    ui.externa.confirmadas.push({ id: doc.id, titulo: doc.titulo });
+    ui.modal = null;
+    if (ui.externa.pendientes.length === 0) {
+      await generarInformeVisita(ui.externa.visitanteId, ui.externa.confirmadas.map(function (d) { return d.titulo; }));
+    } else {
+      render();
+    }
+  }
+  async function generarInformeVisita(visitanteId, docTitulos) {
+    ui.busy = true; render();
+    var res = await sb.rpc("cae_generar_informe", { p_visitante_id: visitanteId });
+    ui.busy = false;
+    if (res.error) {
+      ui.formError = "No se ha podido completar el registro: " + res.error.message;
+      render();
+      return;
+    }
+    ui.lastInforme = {
+      ts: res.data.ts,
+      nombre: ui.externa.draftNombre, dni: ui.externa.draftDni, empresa: ui.externa.draftEmpresa,
+      firma: ui.externa.firma,
+      documentosConfirmados: docTitulos.map(function (t) { return { titulo: t, ts: res.data.ts }; })
+    };
+    ui.externa = { step: "informe" };
+    render();
+  }
+  function finishExterna() { ui.externa = null; ui.lastInforme = null; ui.screen = "login"; render(); }
 
   async function submitAdminLogin(form) {
     var email = form.email.value.trim();
@@ -316,6 +428,11 @@
   async function logout() {
     await sb.auth.signOut();
     ui.trabajador = null; ui.rol = null; ui.screen = "login";
+    // Limpiamos las cachés cargadas bajo demanda para que la próxima sesión
+    // (del mismo admin más tarde, o de otro) vea siempre datos frescos.
+    ui.adminTrabajadores = null; ui.adminHistorial = null; ui.adminVisitas = null;
+    ui.misMovimientos = null; ui.lastConfirm = null; ui.lastInforme = null;
+    DOCUMENTOS_CAE = null;
     render();
   }
 
@@ -668,6 +785,15 @@
         body + '<div class="modal-foot"><button class="btn btn-ghost btn-sm" data-action="close-modal">Cerrar</button></div></div></div>';
     }
 
+    if (ui.modal.mode === "externa-doc") {
+      var doc = getDocCAE(ui.modal.docId);
+      if (!doc) return '<div class="modal-overlay" id="modal-overlay"></div>';
+      var body2 = doc.pdf_url ? ('<iframe class="pdf-frame" src="' + escapeHtml(doc.pdf_url) + '"></iframe>') : '<p class="empty-note">Todavía no se ha adjuntado el PDF de este documento. Puedes confirmar la lectura igualmente.</p>';
+      return '<div class="modal-overlay open" id="modal-overlay"><div class="modal-panel wide">' +
+        '<div class="modal-head"><h3>' + escapeHtml(doc.titulo) + '</h3><button class="modal-close" data-action="close-modal" aria-label="Cerrar">&times;</button></div>' +
+        body2 + '<div class="modal-foot"><button class="btn btn-ghost btn-sm" data-action="close-modal">Cerrar sin confirmar</button><button class="btn btn-primary" style="width:auto;" data-action="confirmar-doc-externa" data-id="' + doc.id + '"' + (ui.busy ? " disabled" : "") + '>He leído y confirmo este documento</button></div></div></div>';
+    }
+
     return '<div class="modal-overlay" id="modal-overlay"></div>';
   }
 
@@ -708,6 +834,8 @@
     ui.adminTab = tab; ui.formError = ""; render();
     if ((tab === "trabajadores" || tab === "resumen") && ui.adminTrabajadores === null) cargarAdminTrabajadores();
     if ((tab === "historial" || tab === "resumen") && ui.adminHistorial === null) cargarAdminHistorial();
+    if (tab === "externas" && DOCUMENTOS_CAE === null) cargarDocumentosCAE();
+    if (tab === "externas" && ui.adminVisitas === null) cargarAdminVisitas();
   }
 
   /* ---------- admin: pantallas ---------- */
@@ -721,6 +849,7 @@
     else if (ui.adminTab === "puestos") body = renderAdminPuestos();
     else if (ui.adminTab === "epis") body = renderAdminEpis();
     else if (ui.adminTab === "interes") body = renderAdminInteres();
+    else if (ui.adminTab === "externas") body = renderAdminExternas();
     else if (ui.adminTab === "historial") body = renderAdminHistorial();
     else if (ui.adminTab === "empresa") body = renderAdminEmpresa();
     else if (ui.adminTab === "ajustes") body = renderAdminAjustes();
@@ -813,6 +942,47 @@
     return '<div class="section"><div class="section-head"><h2>Información de interés</h2><button class="btn btn-primary" style="width:auto;" data-action="admin-open-doc-interes">+ Publicar documento</button></div>' +
       '<p class="field-hint" style="margin-bottom:14px;">Mediciones, resúmenes de formaciones y documentación de PRL visible para todos los trabajadores.</p>' +
       '<div class="table-wrap"><table class="data"><thead><tr><th>Título</th><th>Categoría</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>' + rows + "</tbody></table></div></div>";
+  }
+
+  function renderAdminExternas() {
+    if (DOCUMENTOS_CAE === null) return '<p class="field-note">Cargando…</p>';
+    var docRows = DOCUMENTOS_CAE.length === 0 ? '<tr class="empty-row"><td colspan="4">Todavía no has añadido ningún documento de acogida.</td></tr>' :
+      DOCUMENTOS_CAE.map(function (d) {
+        return "<tr><td>" + escapeHtml(d.titulo) + '</td><td class="mono">v' + d.version + "</td><td>" + fmtDateTime(d.fecha) + '</td><td><div class="actions-cell">' +
+          '<button class="btn btn-ghost btn-sm" data-action="admin-open-doc-cae" data-id="' + d.id + '">Editar / reemplazar PDF</button>' +
+          '<button class="btn-danger-text" data-action="admin-eliminar-doc-cae" data-id="' + d.id + '">Eliminar</button>' +
+          "</div></td></tr>";
+      }).join("");
+
+    var filtro = ui.filtroVisitas.trim().toLowerCase();
+    var visitasBody;
+    if (ui.adminVisitas === null) {
+      visitasBody = '<p class="field-note">Cargando…</p>';
+    } else {
+      var visitas = ui.adminVisitas.filter(function (v) {
+        if (!filtro) return true;
+        return ((v.nombre || "") + " " + (v.dni || "") + " " + (v.empresa || "")).toLowerCase().indexOf(filtro) !== -1;
+      });
+      var visitaRows = visitas.length === 0 ? ('<tr class="empty-row"><td colspan="5">' + (ui.adminVisitas.length === 0 ? "Todavía no se ha registrado ninguna visita." : "Ninguna visita coincide con la búsqueda.") + "</td></tr>") :
+        visitas.map(function (v) {
+          var ndocs = (v.documentos_confirmados || []).length;
+          return "<tr><td>" + fmtDateTime(v.ts) + "</td><td>" + escapeHtml(v.nombre || "") + "</td><td>" + escapeHtml(v.dni || "") + "</td><td>" + escapeHtml(v.empresa || "") + '</td><td class="mono">' + ndocs + "</td></tr>";
+        }).join("");
+      visitasBody = '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha del informe</th><th>Nombre</th><th>DNI</th><th>Empresa</th><th>Docs. confirmados</th></tr></thead><tbody>' + visitaRows + "</tbody></table></div>" +
+        '<p class="field-hint" style="margin-top:8px;">Se muestran las 200 visitas más recientes.</p>';
+    }
+
+    return '<div class="section"><div class="section-head"><h2>Documentos de acogida (CAE)</h2><button class="btn btn-primary" style="width:auto;" data-action="admin-open-doc-cae">+ Añadir documento</button></div>' +
+      '<p class="field-hint" style="margin-bottom:14px;">Documentos que toda empresa externa debe confirmar haber leído antes de acceder a las instalaciones. Reemplazar el PDF incrementa la versión y obliga a reconfirmar la lectura a quienes ya la habían confirmado.</p>' +
+      '<div class="table-wrap"><table class="data"><thead><tr><th>Documento</th><th>Versión</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>' + docRows + "</tbody></table></div></div>" +
+      '<div class="section"><div class="section-head"><h2>Configuración del registro</h2></div>' +
+      '<div class="card" style="max-width:420px;"><p class="field-hint" style="margin-bottom:12px;">Periodo de conservación de datos: <strong>' + (CAE_CONFIG ? CAE_CONFIG.retencion_meses : 48) + ' meses</strong></p>' +
+      '<button class="btn btn-outline" data-action="admin-open-cae-config">Editar periodo y texto informativo</button></div></div>' +
+      '<div class="section"><div class="section-head"><h2>Visitas registradas</h2>' +
+      '<div class="section-actions"><input class="filter-input" type="search" placeholder="Buscar nombre, DNI o empresa…" value="' + escapeHtml(ui.filtroVisitas) + '" data-action="filter-visitas">' +
+      '<button class="btn btn-ghost btn-sm" data-action="print-visitas">Imprimir listado / Guardar como PDF</button></div></div>' +
+      visitasBody +
+      "</div>";
   }
 
   function renderAdminHistorial() {
@@ -937,6 +1107,26 @@
         '<div class="field"><label>Archivo PDF' + (di ? " (opcional, sustituye al actual)" : "") + '</label><input type="file" name="pdf" accept="application/pdf"' + (di ? "" : " required") + "></div>" +
         (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
         modalFoot(di ? "Guardar cambios" : "Publicar") + "</form>");
+    }
+
+    if (mode === "doc-cae") {
+      var dc = ui.modal.id ? getDocCAE(ui.modal.id) : null;
+      return modalWrap(dc ? "Editar documento de acogida" : "Añadir documento de acogida",
+        '<form id="form-admin-modal">' +
+        '<div class="field"><label>Título</label><input name="titulo" required value="' + (dc ? escapeHtml(dc.titulo) : "") + '"></div>' +
+        '<div class="field"><label>Archivo PDF' + (dc ? " (opcional — al sustituirlo, se pedirá reconfirmación a quienes ya lo hubieran confirmado)" : "") + '</label><input type="file" name="pdf" accept="application/pdf"' + (dc ? "" : " required") + "></div>" +
+        (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
+        modalFoot(dc ? "Guardar cambios" : "Añadir") + "</form>");
+    }
+
+    if (mode === "cae-config") {
+      return modalWrap("Configuración de empresas externas",
+        '<form id="form-admin-modal">' +
+        '<div class="field"><label>Periodo de conservación de datos (meses)</label><input name="retencionMeses" type="number" min="1" step="1" value="' + (CAE_CONFIG ? CAE_CONFIG.retencion_meses : 48) + '" required></div>' +
+        '<div class="field"><label>Texto informativo (protección de datos)</label><textarea name="avisoLegal" rows="8">' + escapeHtml((CAE_CONFIG && CAE_CONFIG.aviso_legal) || "") + "</textarea>" +
+        '<span class="field-hint">Usa {EMPRESA} y {MESES} para insertar el nombre de la empresa y el periodo configurado. Revisa este texto con vuestro departamento legal / de PRL antes de usarlo en producción.</span></div>' +
+        (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
+        modalFoot("Guardar") + "</form>");
     }
     return '<div class="modal-overlay" id="modal-overlay"></div>';
   }
@@ -1152,6 +1342,58 @@
     });
   }
 
+  async function adminGuardarDocCAE(form, id) {
+    var titulo = form.titulo.value.trim();
+    var pdfFile = form.pdf.files[0];
+    if (!titulo) { ui.formError = "Indica el título del documento."; render(); return; }
+    if (!id && !pdfFile) { ui.formError = "Adjunta el archivo PDF."; render(); return; }
+    ui.busy = true; ui.formError = ""; render();
+    try {
+      var docId = id;
+      if (id) {
+        var doc = getDocCAE(id);
+        var payload = { titulo: titulo };
+        if (pdfFile) payload.version = (doc ? doc.version : 1) + 1;
+        var upd = await sb.from("documentos_cae").update(payload).eq("id", id);
+        if (upd.error) throw new Error(upd.error.message);
+      } else {
+        var ins = await sb.from("documentos_cae").insert({ titulo: titulo, version: 1 }).select().single();
+        if (ins.error) throw new Error(ins.error.message);
+        docId = ins.data.id;
+      }
+      if (pdfFile) {
+        var path = "docs/" + docId + "/" + uuid() + "." + fileExt(pdfFile.name);
+        await subirArchivo("documentos-cae", path, pdfFile);
+        await sb.from("documentos_cae").update({ pdf_url: publicUrl("documentos-cae", path) }).eq("id", docId);
+      }
+    } catch (err) {
+      ui.busy = false; ui.formError = "No se ha podido guardar: " + err.message; render(); return;
+    }
+    ui.busy = false; ui.modal = null; ui.formError = "";
+    await cargarDocumentosCAE();
+    toast(id ? "Documento actualizado. Quienes ya lo habían confirmado deberán volver a hacerlo." : "Documento añadido.");
+  }
+  function adminEliminarDocCAE(id) {
+    if (!window.confirm("¿Eliminar este documento de acogida? Las confirmaciones ya registradas se conservarán en el historial de visitas.")) return;
+    sb.from("documentos_cae").delete().eq("id", id).then(function (res) {
+      if (res.error) { toast("No se ha podido eliminar: " + res.error.message, 6000); return; }
+      cargarDocumentosCAE();
+      toast("Documento eliminado.");
+    });
+  }
+  async function adminGuardarCaeConfig(form) {
+    var retencion = parseInt(form.retencionMeses.value, 10);
+    if (isNaN(retencion) || retencion < 1) { ui.formError = "Indica un periodo de conservación válido."; render(); return; }
+    ui.busy = true; ui.formError = ""; render();
+    var upd = await sb.from("cae_config").update({ retencion_meses: retencion, aviso_legal: form.avisoLegal.value }).eq("id", 1);
+    ui.busy = false;
+    if (upd.error) { ui.formError = "No se ha podido guardar: " + upd.error.message; render(); return; }
+    ui.modal = null; ui.formError = "";
+    await cargarBranding();
+    toast("Configuración actualizada.");
+    render();
+  }
+
   async function adminCambiarPassword(form) {
     var p1 = form.p1.value, p2 = form.p2.value;
     if (!p1 || p1.length < 4) { ui.formError = "La contraseña debe tener al menos 4 caracteres."; render(); return; }
@@ -1207,6 +1449,35 @@
         '<table><tr><th>Fecha</th><th>Tipo</th><th>Trabajador / Responsable</th><th>EPI</th><th>Talla</th><th>Cantidad</th></tr>' +
         movs.map(function (m) {
           return '<tr><td>' + fmtDateTime(m.ts) + '</td><td>' + (m.tipo === "solicitud" ? "Solicitud" : "Reposición") + '</td><td>' + escapeHtml(m.trabajador_nombre || m.responsable || "—") + '</td><td>' + escapeHtml(m.epi_nombre || "—") + '</td><td>' + (m.talla ? escapeHtml(m.talla) : "—") + '</td><td>' + (m.tipo === "solicitud" ? "-" : "+") + m.cantidad + '</td></tr>';
+        }).join("") +
+        '</table></div>';
+    } else if (kind === "informe" && ui.lastInforme) {
+      var inf = ui.lastInforme;
+      html = '<div class="print-doc"><h2>Informe de acogida — Empresa externa</h2>' +
+        '<div class="print-meta">Documento generado el ' + fmtDateTime(inf.ts) + '</div>' +
+        '<table>' +
+        '<tr><td class="k">Nombre y apellidos</td><td>' + escapeHtml(inf.nombre) + '</td></tr>' +
+        '<tr><td class="k">DNI / NIE</td><td>' + escapeHtml(inf.dni) + '</td></tr>' +
+        '<tr><td class="k">Empresa</td><td>' + escapeHtml(inf.empresa) + '</td></tr>' +
+        '</table>' +
+        '<div style="font-size:12px;color:#555;margin-bottom:8px;">Documentos confirmados</div>' +
+        '<table>' + inf.documentosConfirmados.map(function (d) {
+          return '<tr><td class="k">' + escapeHtml(d.titulo) + '</td><td>' + fmtDateTime(d.ts) + '</td></tr>';
+        }).join("") + '</table>' +
+        '<div class="sig-box"><div style="font-size:11px;color:#555;margin-bottom:6px;">Firma</div>' +
+        (inf.firma ? ('<img src="' + inf.firma + '" alt="Firma">') : '<div>Sin firma</div>') +
+        '</div></div>';
+    } else if (kind === "visitas") {
+      var filtroV = ui.filtroVisitas.trim().toLowerCase();
+      var vis = (ui.adminVisitas || []).filter(function (v) {
+        if (!filtroV) return true;
+        return ((v.nombre || "") + " " + (v.dni || "") + " " + (v.empresa || "")).toLowerCase().indexOf(filtroV) !== -1;
+      });
+      html = '<div class="print-doc"><h2>Visitas de empresas externas</h2>' +
+        '<div class="print-meta">Documento generado el ' + fmtDateTime(new Date().toISOString()) + (filtroV ? (' · filtro: "' + escapeHtml(ui.filtroVisitas) + '"') : '') + '</div>' +
+        '<table><tr><th>Fecha del informe</th><th>Nombre</th><th>DNI</th><th>Empresa</th><th>Documentos confirmados</th></tr>' +
+        vis.map(function (v) {
+          return "<tr><td>" + fmtDateTime(v.ts) + "</td><td>" + escapeHtml(v.nombre || "") + "</td><td>" + escapeHtml(v.dni || "") + "</td><td>" + escapeHtml(v.empresa || "") + "</td><td>" + (v.documentos_confirmados || []).map(function (d) { return escapeHtml(d.titulo); }).join(", ") + "</td></tr>";
         }).join("") +
         '</table></div>';
     }
@@ -1270,6 +1541,75 @@
       "</div></header>";
   }
 
+  function renderExternaHeader() {
+    return '<header class="app-header"><div class="app-header-inner">' +
+      '<div class="brand"><div class="brand-mark" aria-hidden="true">' + brandMarkHtml() + '</div><div class="brand-text">' + brandTextHtml() + "</div></div>" +
+      '<div class="header-user"><button class="btn btn-ghost btn-sm" data-action="goto-login">Cerrar</button></div>' +
+      "</div></header>";
+  }
+
+  function renderExternaScreen() {
+    var e = ui.externa;
+    if (!e) return "";
+    var body = "";
+
+    if (e.step === "datos") {
+      body = '<h3 style="font-size:18px;margin-bottom:4px;">Registro de visita — Empresa externa</h3>' +
+        '<p class="mini-item-sub" style="margin-bottom:16px;">Cumplimenta tus datos antes de acceder a las instalaciones.</p>' +
+        '<form id="form-externa-datos">' +
+        '<div class="field"><label for="ext-nombre">Nombre y apellidos</label><input id="ext-nombre" name="nombre" required value="' + escapeHtml(e.draftNombre || "") + '"></div>' +
+        '<div class="field"><label for="ext-dni">DNI / NIE</label><input id="ext-dni" name="dni" required autocapitalize="characters" value="' + escapeHtml(e.draftDni || "") + '"></div>' +
+        '<div class="field"><label for="ext-empresa">Empresa a la que pertenece</label><input id="ext-empresa" name="empresaNombre" required value="' + escapeHtml(e.draftEmpresa || "") + '"></div>' +
+        '<p class="field-note" style="font-size:12px;line-height:1.5;font-weight:400;text-transform:none;letter-spacing:0;">' + escapeHtml(avisoLegalTexto()) + "</p>" +
+        '<div class="field"><label>Firma</label><div class="sign-pad-wrap"><canvas id="sig-canvas"></canvas><div class="sign-pad-placeholder" id="sig-placeholder">Firma aquí</div></div>' +
+        '<div class="sign-actions"><button class="btn-link" type="button" data-action="borrar-firma">Borrar firma</button></div></div>' +
+        (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
+        '<div class="btn-row"><button type="button" class="btn btn-ghost" data-action="goto-login">Cancelar</button>' +
+        '<button class="btn btn-primary" type="submit"' + (ui.busy ? " disabled" : "") + '>' + (ui.busy ? "Comprobando…" : "Aceptar y continuar") + '</button></div>' +
+        "</form>";
+      return '<div class="stepper-card">' + body + "</div>";
+    }
+
+    if (e.step === "ya-registrado") {
+      body = '<div class="confirmation-icon">ℹ️</div>' +
+        '<h3 style="font-size:19px;text-align:center;margin-bottom:8px;">Ya estás registrado</h3>' +
+        '<p class="mini-item-sub" style="text-align:center;">Tus datos ya constan en nuestro registro dentro del plazo de vigencia y no hay documentos pendientes de confirmar. No es necesario que vuelvas a cumplimentar el formulario.</p>' +
+        '<button class="btn btn-primary" style="margin-top:20px;" data-action="finalizar-externa">Finalizar</button>';
+      return '<div class="stepper-card">' + body + "</div>";
+    }
+
+    if (e.step === "documentos") {
+      var rows = e.confirmadas.map(function (d) {
+        return '<div class="alert-card" style="border-left-color:var(--success);">' +
+          '<div><div class="alert-card-title">' + escapeHtml(d.titulo) + '</div><div class="alert-card-sub">Confirmado</div></div>' +
+          '<span class="badge badge-ok">✓ Leído</span></div>';
+      }).join("") + e.pendientes.map(function (d) {
+        return '<div class="alert-card is-critical">' +
+          '<div><div class="alert-card-title">' + escapeHtml(d.titulo) + '</div><div class="alert-card-sub">Pendiente de confirmar</div></div>' +
+          '<button class="btn btn-outline btn-sm" data-action="open-externa-doc" data-id="' + d.id + '">Abrir documento</button></div>';
+      }).join("");
+      body = '<h3 style="font-size:18px;margin-bottom:4px;">Documentos informativos</h3>' +
+        '<p class="mini-item-sub" style="margin-bottom:16px;">Abre y confirma la lectura de cada documento pendiente.</p>' +
+        '<div class="alerts-list">' + rows + "</div>";
+      return '<div class="stepper-card">' + body + "</div>";
+    }
+
+    if (e.step === "informe") {
+      var inf = ui.lastInforme;
+      if (!inf) return "";
+      body = '<div class="confirmation-icon">✓</div>' +
+        '<h3 style="font-size:19px;text-align:center;margin-bottom:6px;">Registro completado</h3>' +
+        '<p class="mini-item-sub" style="text-align:center;margin-bottom:20px;">' + escapeHtml(inf.nombre) + " · " + escapeHtml(inf.empresa) + " · " + fmtDateTime(inf.ts) + "</p>" +
+        '<div class="summary-list">' + inf.documentosConfirmados.map(function (d) {
+          return '<div class="summary-row"><span class="label">' + escapeHtml(d.titulo) + '</span><span class="value">' + fmtDateTime(d.ts) + "</span></div>";
+        }).join("") + "</div>" +
+        '<div class="btn-row"><button class="btn btn-outline" data-action="print-informe">Imprimir / Guardar como PDF</button></div>' +
+        '<button class="btn btn-primary" style="margin-top:10px;" data-action="finalizar-externa">Finalizar</button>';
+      return '<div class="stepper-card">' + body + "</div>";
+    }
+    return "";
+  }
+
   function renderHomeScreen() {
     return renderWorkerHeader() +
       '<main><div class="home-welcome"><div class="eyebrow">Bienvenido/a</div><h1>' + escapeHtml(ui.trabajador.nombre) + "</h1></div>" +
@@ -1316,10 +1656,15 @@
       html = renderWorkerHeader() + "<main>" + renderSolicitudScreen() + "</main>" + renderWorkerModal();
     } else if (ui.screen === "admin") {
       html = renderAdminHeader() + "<main>" + renderAdminScreen() + "</main>" + renderAdminModal();
+    } else if (ui.screen === "externa") {
+      html = renderExternaHeader() + "<main>" + renderExternaScreen() + "</main>" + renderWorkerModal();
     }
     root.innerHTML = html;
     if (ui.screen === "solicitud" && ui.solicitud && ui.solicitud.step === 3) {
       setupSignaturePad(function (v) { if (ui.solicitud) ui.solicitud.sig = v; }, ui.solicitud.sig);
+    }
+    if (ui.screen === "externa" && ui.externa && ui.externa.step === "datos") {
+      setupSignaturePad(function (v) { if (ui.externa) ui.externa.firma = v; }, ui.externa.firma || null);
     }
   }
 
@@ -1341,9 +1686,15 @@
     else if (action === "go-riesgos") goScreen("riesgos");
     else if (action === "go-interes") goScreen("interes");
     else if (action === "go-perfil") goScreen("perfil");
-    else if (action === "go-externa") {
-      toast("Esta pantalla todavía se está migrando. Vuelve en breve.");
-    }
+    else if (action === "go-externa") goExternaInicio();
+    else if (action === "open-externa-doc") openExternaDoc(id);
+    else if (action === "confirmar-doc-externa") confirmarExternaDoc(id);
+    else if (action === "finalizar-externa") finishExterna();
+    else if (action === "print-informe") printDoc("informe");
+    else if (action === "admin-open-doc-cae") { ui.modal = { mode: "doc-cae", id: id || null }; ui.formError = ""; render(); }
+    else if (action === "admin-eliminar-doc-cae") adminEliminarDocCAE(id);
+    else if (action === "admin-open-cae-config") { ui.modal = { mode: "cae-config" }; ui.formError = ""; render(); }
+    else if (action === "print-visitas") printDoc("visitas");
     else if (action === "open-accion") openAccion(id);
     else if (action === "open-ficha") openFicha(id);
     else if (action === "solicitar-epi") startSolicitud(id);
@@ -1393,7 +1744,10 @@
       else if (mode === "epi") adminGuardarEpi(f, id);
       else if (mode === "reponer") adminReponer(f, id);
       else if (mode === "doc-interes") adminGuardarDocInteres(f, id);
+      else if (mode === "doc-cae") adminGuardarDocCAE(f, id);
+      else if (mode === "cae-config") adminGuardarCaeConfig(f);
     }
+    else if (f && f.id === "form-externa-datos") { e.preventDefault(); submitExternaDatos(f); }
   });
 
   document.addEventListener("input", function (e) {
@@ -1403,6 +1757,11 @@
       ui.filtroHistorial = t.value; render();
       var inp = document.querySelector('[data-action="filter-historial"]');
       if (inp) { inp.focus(); inp.selectionStart = inp.selectionEnd = inp.value.length; }
+    }
+    if (t.matches('[data-action="filter-visitas"]')) {
+      ui.filtroVisitas = t.value; render();
+      var inp2 = document.querySelector('[data-action="filter-visitas"]');
+      if (inp2) { inp2.focus(); inp2.selectionStart = inp2.selectionEnd = inp2.value.length; }
     }
   });
 
