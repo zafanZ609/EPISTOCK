@@ -30,8 +30,18 @@
     puestoAbierto: null,
     solicitud: null,
     misMovimientos: null, // se rellena al entrar en "Mi perfil"
-    lastConfirm: null // último movimiento confirmado, para la pantalla de éxito + imprimir
+    lastConfirm: null, // último movimiento confirmado, para la pantalla de éxito + imprimir
+    adminTab: "resumen",
+    adminTrabajadores: null, // lista completa, solo admin
+    adminHistorial: null, // movimientos recientes, solo admin
+    filtroHistorial: ""
   };
+  var ADMIN_TABS = [
+    ["resumen", "Resumen"], ["trabajadores", "Trabajadores"], ["puestos", "Puestos"],
+    ["epis", "Catálogo EPIs"], ["interes", "Info. interés"], ["historial", "Historial EPIs"],
+    ["empresa", "Empresa"], ["ajustes", "Ajustes"]
+  ];
+  var CATEGORIAS = Object.keys(CATEGORIA_ICONO);
 
   /* ---------- utilidades ---------- */
   function escapeHtml(s) {
@@ -82,6 +92,18 @@
       var r = (Math.random() * 16) | 0, v = c === "x" ? r : (r & 0x3) | 0x8;
       return v.toString(16);
     });
+  }
+  function fileExt(name) {
+    var m = /\.([a-zA-Z0-9]+)$/.exec(name || "");
+    return m ? m[1].toLowerCase() : "dat";
+  }
+  async function subirArchivo(bucket, path, file) {
+    var res = await sb.storage.from(bucket).upload(path, file, { contentType: file.type || undefined, upsert: true });
+    if (res.error) throw new Error(res.error.message);
+    return path;
+  }
+  function publicUrl(bucket, path) {
+    return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
   }
 
   /* ---------- arranque ---------- */
@@ -140,6 +162,9 @@
     if (adminRes.data === true) {
       ui.rol = "admin";
       ui.screen = "admin";
+      try { await cargarCatalogo(); } catch (e) { console.error("Error cargando catálogo", e); }
+      cargarAdminTrabajadores();
+      cargarAdminHistorial();
       return;
     }
     var perfilRes = await sb.from("perfiles").select("trabajador_id").single();
@@ -180,6 +205,7 @@
 
     var docsRes = await sb.from("documentos_interes").select("*").order("fecha", { ascending: false });
     DOCS_INTERES = docsRes.data || [];
+    render();
   }
 
   /* ---------- login trabajador ---------- */
@@ -282,6 +308,9 @@
     ui.rol = "admin";
     ui.screen = "admin";
     render();
+    try { await cargarCatalogo(); } catch (e) { console.error("Error cargando catálogo", e); }
+    cargarAdminTrabajadores();
+    cargarAdminHistorial();
   }
 
   async function logout() {
@@ -569,7 +598,18 @@
   }
 
   /* ---------- modales de trabajador ---------- */
-  function openFicha(epiId) { ui.modal = { mode: "ficha", epiId: epiId }; render(); }
+  async function openFicha(epiId) {
+    ui.modal = { mode: "ficha", epiId: epiId, fichaPdfSignedUrl: null };
+    render();
+    var epi = getEpi(epiId);
+    if (epi && epi.ficha_pdf_url) {
+      var signed = await sb.storage.from("fichas-pdf").createSignedUrl(epi.ficha_pdf_url, 3600);
+      if (ui.modal && ui.modal.mode === "ficha" && ui.modal.epiId === epiId) {
+        ui.modal.fichaPdfSignedUrl = signed.data ? signed.data.signedUrl : null;
+        render();
+      }
+    }
+  }
   function openAccion(epiId) { ui.modal = { mode: "accion", epiId: epiId }; render(); }
   function closeModal() { ui.modal = null; ui.formError = ""; render(); }
   async function openDocInteres(id) {
@@ -602,7 +642,7 @@
           "</div></div></div>";
       }
 
-      var pdfBlock = epi.ficha_pdf_url ? ('<iframe class="pdf-frame" src="' + escapeHtml(epi.ficha_pdf_url) + '"></iframe>') :
+      var pdfBlock = epi.ficha_pdf_url ? (ui.modal.fichaPdfSignedUrl ? ('<iframe class="pdf-frame" src="' + escapeHtml(ui.modal.fichaPdfSignedUrl) + '"></iframe>') : '<p class="field-note">Cargando documento…</p>') :
         ('<dl class="ficha-doc">' +
           '<dt>Normativa aplicable</dt><dd>' + escapeHtml(epi.normativa || "—") + "</dd>" +
           '<dt>Marcado CE</dt><dd>' + escapeHtml(epi.marcado_ce || "—") + "</dd>" +
@@ -629,6 +669,500 @@
     }
 
     return '<div class="modal-overlay" id="modal-overlay"></div>';
+  }
+
+  /* ---------- admin: utilidades de renderizado ---------- */
+  function statCard(label, value, caption, tone) {
+    return '<div class="stat-card' + (tone ? " is-" + tone : "") + '"><div class="eyebrow">' + escapeHtml(label) + '</div><div class="value mono">' + value + '</div><div class="caption">' + escapeHtml(caption) + "</div></div>";
+  }
+  function modalFoot(submitLabel) {
+    return '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancelar</button><button type="submit" class="btn btn-primary" style="width:auto;"' + (ui.busy ? " disabled" : "") + '>' + (ui.busy ? "Guardando…" : submitLabel) + "</button></div>";
+  }
+  function modalWrap(title, body) {
+    return '<div class="modal-overlay open" id="modal-overlay"><div class="modal-panel wide"><div class="modal-head"><h3>' + title + '</h3><button class="modal-close" data-action="close-modal" aria-label="Cerrar">&times;</button></div>' + body + "</div></div>";
+  }
+
+  /* ---------- admin: carga de datos ---------- */
+  async function cargarAdminTrabajadores() {
+    ui.adminTrabajadores = null; render();
+    var res = await sb.from("trabajadores").select("*, puestos(nombre)").order("nombre");
+    ui.adminTrabajadores = res.data || [];
+    render();
+  }
+  async function cargarAdminHistorial() {
+    ui.adminHistorial = null; render();
+    var res = await sb.from("movimientos").select("*").order("ts", { ascending: false }).limit(200);
+    var movs = res.data || [];
+    var paths = movs.filter(function (m) { return m.firma_url; }).map(function (m) { return m.firma_url; });
+    if (paths.length) {
+      var signedRes = await sb.storage.from("firmas").createSignedUrls(paths, 3600);
+      var mapa = {};
+      (signedRes.data || []).forEach(function (s) { if (s.signedUrl) mapa[s.path] = s.signedUrl; });
+      movs.forEach(function (m) { if (m.firma_url) m._firmaSignedUrl = mapa[m.firma_url] || null; });
+    }
+    ui.adminHistorial = movs;
+    render();
+  }
+
+  function adminGoTab(tab) {
+    ui.adminTab = tab; ui.formError = ""; render();
+    if ((tab === "trabajadores" || tab === "resumen") && ui.adminTrabajadores === null) cargarAdminTrabajadores();
+    if ((tab === "historial" || tab === "resumen") && ui.adminHistorial === null) cargarAdminHistorial();
+  }
+
+  /* ---------- admin: pantallas ---------- */
+  function renderAdminScreen() {
+    var nav = '<nav class="admin-nav">' + ADMIN_TABS.map(function (t) {
+      return '<button data-action="admin-tab" data-tab="' + t[0] + '" aria-selected="' + (ui.adminTab === t[0]) + '">' + t[1] + "</button>";
+    }).join("") + "</nav>";
+    var body = "";
+    if (ui.adminTab === "resumen") body = renderAdminResumen();
+    else if (ui.adminTab === "trabajadores") body = renderAdminTrabajadores();
+    else if (ui.adminTab === "puestos") body = renderAdminPuestos();
+    else if (ui.adminTab === "epis") body = renderAdminEpis();
+    else if (ui.adminTab === "interes") body = renderAdminInteres();
+    else if (ui.adminTab === "historial") body = renderAdminHistorial();
+    else if (ui.adminTab === "empresa") body = renderAdminEmpresa();
+    else if (ui.adminTab === "ajustes") body = renderAdminAjustes();
+    return nav + body;
+  }
+
+  function renderAdminResumen() {
+    var bajoStock = EPIS.filter(function (e) { return stockEstado(e) !== "ok"; });
+    var totalUnidades = EPIS.reduce(function (a, e) { return a + (e.stock || 0); }, 0);
+    var now = new Date();
+    var movs = ui.adminHistorial || [];
+    var solicitudesMes = movs.filter(function (m) {
+      if (m.tipo !== "solicitud") return false;
+      var d = new Date(m.ts);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    }).length;
+    var numTrabajadores = ui.adminTrabajadores === null ? "…" : ui.adminTrabajadores.length;
+    var stats = '<div class="stats-grid">' +
+      statCard("Trabajadores", numTrabajadores, "dados de alta") +
+      statCard("Tipos de EPI", EPIS.length, "en catálogo") +
+      statCard("Unidades en stock", totalUnidades, "en almacén") +
+      statCard("Solicitudes este mes", solicitudesMes, now.toLocaleDateString("es-ES", { month: "long", year: "numeric" })) +
+      statCard("Stock bajo mínimo", bajoStock.length, bajoStock.length ? "requieren reposición" : "todo en orden", bajoStock.length ? (bajoStock.some(function (e) { return e.stock <= 0; }) ? "critical" : "warning") : "") +
+      "</div>";
+    var alerts = "";
+    if (bajoStock.length) {
+      alerts = '<div class="section"><div class="section-head"><h2>Alertas de stock mínimo<span class="count-badge">' + bajoStock.length + "</span></h2></div>" +
+        '<div class="alerts-list">' + bajoStock.map(function (e) {
+          var crit = e.stock <= 0;
+          return '<div class="alert-card' + (crit ? " is-critical" : "") + '"><div><div class="alert-card-title">' + escapeHtml(e.nombre) + "</div><div class=\"alert-card-sub\">" + escapeHtml(e.categoria || "") + "</div></div>" +
+            '<div style="display:flex;align-items:center;gap:16px;"><div class="alert-card-stock mono">' + e.stock + " / " + e.umbral + " uds.</div>" +
+            '<button class="btn btn-outline btn-sm" data-action="admin-open-reponer" data-id="' + e.id + '">Reponer stock</button></div></div>';
+        }).join("") + "</div></div>";
+    }
+    return stats + alerts;
+  }
+
+  function renderAdminTrabajadores() {
+    if (ui.adminTrabajadores === null) return '<p class="field-note">Cargando…</p>';
+    var rows = ui.adminTrabajadores.length === 0 ? '<tr class="empty-row"><td colspan="5">Todavía no hay trabajadores dados de alta.</td></tr>' :
+      ui.adminTrabajadores.map(function (t) {
+        var estadoBadge = !t.activo ? '<span class="badge badge-critical">Baja</span>' : (t.auth_user_id ? '<span class="badge badge-ok">Activo</span>' : '<span class="badge badge-warning">Pendiente 1er acceso</span>');
+        return "<tr><td>" + escapeHtml(t.numero_empleado) + "</td><td>" + escapeHtml(t.nombre) + "</td><td>" + (t.puestos ? escapeHtml(t.puestos.nombre) : '<span style="color:var(--text-muted)">Sin asignar</span>') + "</td><td>" + estadoBadge + '</td><td><div class="actions-cell">' +
+          '<button class="btn btn-ghost btn-sm" data-action="admin-open-trabajador" data-id="' + t.id + '">Editar</button>' +
+          '<button class="btn btn-ghost btn-sm" data-action="admin-reset-acceso" data-id="' + t.id + '">Restablecer acceso</button>' +
+          '<button class="btn-danger-text" data-action="admin-toggle-baja" data-id="' + t.id + '">' + (t.activo ? "Dar de baja" : "Reactivar") + "</button>" +
+          "</div></td></tr>";
+      }).join("");
+    return '<div class="section"><div class="section-head"><h2>Trabajadores</h2><button class="btn btn-primary" style="width:auto;" data-action="admin-open-trabajador">+ Añadir trabajador</button></div>' +
+      '<div class="table-wrap"><table class="data"><thead><tr><th>Nº empleado</th><th>Nombre</th><th>Puesto</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + "</tbody></table></div></div>";
+  }
+
+  function renderAdminPuestos() {
+    var rows = PUESTOS.length === 0 ? '<tr class="empty-row"><td colspan="4">Todavía no hay puestos configurados.</td></tr>' :
+      PUESTOS.map(function (p) {
+        var epis = (p.episObligatorios || []).map(function (id) { return getEpi(id); }).filter(Boolean).map(function (e) { return e.nombre; }).join(", ");
+        return "<tr><td>" + escapeHtml(p.nombre) + '</td><td class="wrap">' + (p.riesgos || []).length + " riesgos</td><td class=\"wrap\">" + (epis || "—") + '</td><td><div class="actions-cell">' +
+          '<button class="btn btn-ghost btn-sm" data-action="admin-open-puesto" data-id="' + p.id + '">Editar</button>' +
+          '<button class="btn-danger-text" data-action="admin-eliminar-puesto" data-id="' + p.id + '">Eliminar</button>' +
+          "</div></td></tr>";
+      }).join("");
+    return '<div class="section"><div class="section-head"><h2>Puestos de trabajo</h2><button class="btn btn-primary" style="width:auto;" data-action="admin-open-puesto">+ Añadir puesto</button></div>' +
+      '<div class="table-wrap"><table class="data"><thead><tr><th>Puesto</th><th>Riesgos</th><th>EPIs obligatorios</th><th>Acciones</th></tr></thead><tbody>' + rows + "</tbody></table></div></div>";
+  }
+
+  function renderAdminEpis() {
+    var rows = EPIS.length === 0 ? '<tr class="empty-row"><td colspan="7">Aún no has añadido ningún EPI al catálogo.</td></tr>' :
+      EPIS.map(function (e) {
+        var estado = stockEstado(e);
+        var badge = estado === "ok" ? '<span class="badge badge-ok">OK</span>' : estado === "warning" ? '<span class="badge badge-warning">Bajo</span>' : '<span class="badge badge-critical">Agotado</span>';
+        var photo = e.foto_url ? ('<img src="' + escapeHtml(e.foto_url) + '" alt="" style="width:100%;height:100%;object-fit:cover;">') : epiIcon(e);
+        return "<tr><td><div class=\"file-preview\">" + photo + "</div></td><td>" + escapeHtml(e.nombre) + "</td><td>" + escapeHtml(e.categoria || "") + '</td><td class="mono">' + e.stock + '</td><td class="mono">' + e.umbral + "</td><td>" + badge + '</td><td><div class="actions-cell">' +
+          '<button class="btn btn-ghost btn-sm" data-action="admin-open-reponer" data-id="' + e.id + '">Reponer</button>' +
+          '<button class="btn btn-ghost btn-sm" data-action="admin-open-epi" data-id="' + e.id + '">Editar</button>' +
+          '<button class="btn-danger-text" data-action="admin-eliminar-epi" data-id="' + e.id + '">Eliminar</button>' +
+          "</div></td></tr>";
+      }).join("");
+    return '<div class="section"><div class="section-head"><h2>Catálogo y stock</h2><button class="btn btn-primary" style="width:auto;" data-action="admin-open-epi">+ Añadir EPI</button></div>' +
+      '<div class="table-wrap"><table class="data"><thead><tr><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Stock</th><th>Umbral</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + "</tbody></table></div></div>";
+  }
+
+  function renderAdminInteres() {
+    var rows = DOCS_INTERES.length === 0 ? '<tr class="empty-row"><td colspan="4">Todavía no has publicado ningún documento.</td></tr>' :
+      DOCS_INTERES.map(function (d) {
+        return "<tr><td>" + escapeHtml(d.titulo) + "</td><td>" + (d.categoria ? escapeHtml(d.categoria) : "—") + "</td><td>" + fmtDateTime(d.fecha) + '</td><td><div class="actions-cell">' +
+          '<button class="btn btn-ghost btn-sm" data-action="admin-open-doc-interes" data-id="' + d.id + '">Editar</button>' +
+          '<button class="btn-danger-text" data-action="admin-eliminar-doc-interes" data-id="' + d.id + '">Eliminar</button>' +
+          "</div></td></tr>";
+      }).join("");
+    return '<div class="section"><div class="section-head"><h2>Información de interés</h2><button class="btn btn-primary" style="width:auto;" data-action="admin-open-doc-interes">+ Publicar documento</button></div>' +
+      '<p class="field-hint" style="margin-bottom:14px;">Mediciones, resúmenes de formaciones y documentación de PRL visible para todos los trabajadores.</p>' +
+      '<div class="table-wrap"><table class="data"><thead><tr><th>Título</th><th>Categoría</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>' + rows + "</tbody></table></div></div>";
+  }
+
+  function renderAdminHistorial() {
+    if (ui.adminHistorial === null) return '<p class="field-note">Cargando…</p>';
+    var filtro = ui.filtroHistorial.trim().toLowerCase();
+    var movimientos = ui.adminHistorial.filter(function (m) {
+      if (!filtro) return true;
+      return ((m.trabajador_nombre || m.responsable || "") + " " + (m.epi_nombre || "")).toLowerCase().indexOf(filtro) !== -1;
+    });
+    var rows = movimientos.length === 0 ? ('<tr class="empty-row"><td colspan="7">' + (ui.adminHistorial.length === 0 ? "Todavía no hay movimientos registrados." : "Ningún movimiento coincide con la búsqueda.") + "</td></tr>") :
+      movimientos.map(function (m) {
+        var tipoBadge = m.tipo === "solicitud" ? '<span class="badge badge-solicitud">Solicitud</span>' : '<span class="badge badge-reposicion">Reposición</span>';
+        var cantidadHtml = m.tipo === "solicitud" ? '<span class="mono amount-out">-' + m.cantidad + "</span>" : '<span class="mono amount-in">+' + m.cantidad + "</span>";
+        return "<tr><td>" + fmtDateTime(m.ts) + "</td><td>" + tipoBadge + "</td><td>" + escapeHtml(m.trabajador_nombre || m.responsable || "—") + "</td><td>" + escapeHtml(m.epi_nombre || "—") + "</td><td>" + (m.talla ? escapeHtml(m.talla) : "—") + "</td><td>" + cantidadHtml + "</td><td>" +
+          (m._firmaSignedUrl ? ('<img class="sig-thumb" src="' + m._firmaSignedUrl + '" alt="Firma">') : "—") + "</td></tr>";
+      }).join("");
+    return '<div class="section"><div class="section-head"><h2>Historial de movimientos</h2>' +
+      '<div class="section-actions"><input class="filter-input" type="search" placeholder="Buscar trabajador o EPI…" value="' + escapeHtml(ui.filtroHistorial) + '" data-action="filter-historial">' +
+      '<button class="btn btn-ghost btn-sm" data-action="print-historial">Imprimir listado / Guardar como PDF</button></div></div>' +
+      '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Tipo</th><th>Trabajador / Responsable</th><th>EPI</th><th>Talla</th><th>Cantidad</th><th>Firma</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<p class="field-hint" style="margin-top:10px;">Se muestran los últimos 200 movimientos.</p>' +
+      "</div>";
+  }
+
+  function renderAdminEmpresa() {
+    var logoPreview = EMPRESA.logo_url ? ('<img src="' + escapeHtml(EMPRESA.logo_url) + '" alt="" style="width:100%;height:100%;object-fit:contain;">') : "🦺";
+    return '<div class="section"><div class="section-head"><h2>Empresa y marca</h2></div>' +
+      '<div class="card" style="max-width:520px;">' +
+      '<form id="form-empresa">' +
+      '<div class="field"><label>Logo de la empresa</label><div class="file-input-row"><div class="file-preview">' + logoPreview + '</div><input type="file" name="logo" accept="image/*"></div></div>' +
+      '<div class="field"><label>Nombre de la empresa</label><input name="nombre" required value="' + escapeHtml(EMPRESA.nombre || "") + '"></div>' +
+      '<div class="field"><label>Título principal de la app</label><input name="tituloPrincipal" required value="' + escapeHtml(EMPRESA.titulo_principal || "") + '">' +
+      '<span class="field-hint">Se muestra en grande en la pantalla de acceso y en la cabecera.</span></div>' +
+      '<div class="field"><label>Título secundario de la app</label><input name="tituloSecundario" required value="' + escapeHtml(EMPRESA.titulo_secundario || "") + '">' +
+      '<span class="field-hint">Se muestra más pequeño, debajo del título principal.</span></div>' +
+      (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
+      '<button class="btn btn-primary" type="submit" style="width:auto;"' + (ui.busy ? " disabled" : "") + '>' + (ui.busy ? "Guardando…" : "Guardar") + "</button>" +
+      "</form></div></div>";
+  }
+
+  function renderAdminAjustes() {
+    return '<div class="section"><div class="section-head"><h2>Ajustes</h2></div>' +
+      '<div class="card" style="max-width:420px;"><h3 style="font-size:15px;margin-bottom:6px;">Contraseña de administración</h3>' +
+      '<p class="field-hint" style="margin-bottom:14px;">Cambia la contraseña de esta cuenta de administración.</p>' +
+      '<form id="form-admin-password">' +
+      '<div class="field"><label>Nueva contraseña</label><input name="p1" type="password" autocomplete="new-password" required></div>' +
+      '<div class="field"><label>Repite la contraseña</label><input name="p2" type="password" autocomplete="new-password" required></div>' +
+      (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
+      '<button class="btn btn-primary" type="submit" style="width:auto;"' + (ui.busy ? " disabled" : "") + '>' + (ui.busy ? "Guardando…" : "Cambiar contraseña") + "</button>" +
+      "</form></div></div>";
+  }
+
+  /* ---------- admin: modal genérico ---------- */
+  function renderAdminModal() {
+    if (!ui.modal) return '<div class="modal-overlay" id="modal-overlay"></div>';
+    var mode = ui.modal.mode;
+
+    if (mode === "trabajador") {
+      var t = ui.modal.id ? ui.adminTrabajadores.filter(function (x) { return x.id === ui.modal.id; })[0] : null;
+      var puestoOptions = '<option value="">Sin asignar</option>' + PUESTOS.map(function (p) { return '<option value="' + p.id + '"' + (t && t.puesto_id === p.id ? " selected" : "") + '>' + escapeHtml(p.nombre) + "</option>"; }).join("");
+      return modalWrap(t ? "Editar trabajador" : "Añadir trabajador",
+        '<form id="form-admin-modal">' +
+        '<div class="row-2"><div class="field"><label>Nº empleado</label><input name="numero" required' + (t ? " disabled" : "") + ' value="' + (t ? escapeHtml(t.numero_empleado) : "") + '"></div>' +
+        '<div class="field"><label>Puesto</label><select name="puesto">' + puestoOptions + "</select></div></div>" +
+        '<div class="field"><label>Nombre completo</label><input name="nombre" required value="' + (t ? escapeHtml(t.nombre) : "") + '"></div>' +
+        (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
+        modalFoot(t ? "Guardar cambios" : "Añadir") + "</form>");
+    }
+
+    if (mode === "puesto") {
+      var p = ui.modal.id ? getPuesto(ui.modal.id) : null;
+      var epiChips = EPIS.map(function (e) {
+        var checked = p && (p.episObligatorios || []).indexOf(e.id) !== -1;
+        return '<label><input type="checkbox" name="epiOb" value="' + e.id + '"' + (checked ? " checked" : "") + '>' + escapeHtml(e.nombre) + "</label>";
+      }).join("");
+      return modalWrap(p ? "Editar puesto" : "Añadir puesto",
+        '<form id="form-admin-modal">' +
+        '<div class="field"><label>Nombre del puesto</label><input name="nombre" required value="' + (p ? escapeHtml(p.nombre) : "") + '"></div>' +
+        '<div class="field"><label>Riesgos (uno por línea)</label><textarea name="riesgos" rows="4">' + (p ? escapeHtml((p.riesgos || []).join("\n")) : "") + '</textarea></div>' +
+        '<div class="field"><label>EPIs obligatorios</label><div class="chip-select">' + (epiChips || '<span class="field-hint">Añade primero algún EPI al catálogo.</span>') + "</div></div>" +
+        (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
+        modalFoot(p ? "Guardar cambios" : "Añadir") + "</form>");
+    }
+
+    if (mode === "epi") {
+      var e = ui.modal.id ? getEpi(ui.modal.id) : null;
+      return modalWrap(e ? "Editar EPI" : "Añadir EPI al catálogo",
+        '<form id="form-admin-modal">' +
+        '<div class="field"><label>Nombre</label><input name="nombre" required placeholder="Ej. Guantes anticorte" value="' + (e ? escapeHtml(e.nombre) : "") + '"></div>' +
+        '<div class="field"><label>Categoría</label><select name="categoria"><option value="">— Elegir —</option>' + CATEGORIAS.map(function (c) { return '<option value="' + escapeHtml(c) + '"' + (e && e.categoria === c ? " selected" : "") + '>' + escapeHtml(c) + "</option>"; }).join("") + "</select></div>" +
+        '<div class="field"><label>Tallas / referencias (opcional)</label><input name="tallas" placeholder="Ej. S, M, L, XL" value="' + (e ? escapeHtml((e.tallas || []).join(", ")) : "") + '"></div>' +
+        '<div class="row-2">' + (e ? "" : '<div class="field"><label>Stock inicial</label><input name="stock" type="number" min="0" step="1" value="0" required></div>') +
+        '<div class="field"><label>Umbral de alerta</label><input name="umbral" type="number" min="0" step="1" value="' + (e ? e.umbral : 5) + '" required></div></div>' +
+        '<div class="field"><label>Foto del EPI (opcional)</label><input type="file" name="foto" accept="image/*"></div>' +
+        '<div class="field"><label>Ficha técnica en PDF (opcional)</label><input type="file" name="fichaPdf" accept="application/pdf"></div>' +
+        '<div class="field"><label>Normativa aplicable</label><input name="normativa" value="' + escapeHtml(e && e.normativa || "") + '"></div>' +
+        '<div class="field"><label>Marcado CE</label><input name="marcadoCE" value="' + escapeHtml(e && e.marcado_ce || "") + '"></div>' +
+        '<div class="field"><label>Instrucciones de uso</label><textarea name="instrucciones" rows="2">' + escapeHtml(e && e.instrucciones || "") + "</textarea></div>" +
+        '<div class="field"><label>Mantenimiento</label><textarea name="mantenimiento" rows="2">' + escapeHtml(e && e.mantenimiento || "") + "</textarea></div>" +
+        '<div class="field"><label>Vida útil</label><input name="vidaUtil" value="' + escapeHtml(e && e.vida_util || "") + '"></div>' +
+        (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
+        modalFoot(e ? "Guardar cambios" : "Añadir") + "</form>");
+    }
+
+    if (mode === "reponer") {
+      var e2 = getEpi(ui.modal.id);
+      return modalWrap("Reponer stock" + (e2 ? " — " + escapeHtml(e2.nombre) : ""),
+        '<form id="form-admin-modal">' +
+        '<p class="field-hint" style="margin-bottom:14px;">Stock actual: <strong class="mono">' + (e2 ? e2.stock : "—") + "</strong> uds.</p>" +
+        '<div class="field"><label>Unidades a añadir</label><input name="cantidad" type="number" min="1" step="1" value="1" required></div>' +
+        '<div class="field"><label>Responsable de la reposición</label><input name="responsable" required placeholder="Nombre de quien repone"></div>' +
+        (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
+        modalFoot("Reponer") + "</form>");
+    }
+
+    if (mode === "doc-interes") {
+      var di = ui.modal.id ? getDocInteres(ui.modal.id) : null;
+      return modalWrap(di ? "Editar documento" : "Publicar documento",
+        '<form id="form-admin-modal">' +
+        '<div class="field"><label>Título</label><input name="titulo" required value="' + (di ? escapeHtml(di.titulo) : "") + '"></div>' +
+        '<div class="field"><label>Categoría (opcional)</label><input name="categoria" placeholder="Ej. Mediciones, Formación…" value="' + (di ? escapeHtml(di.categoria || "") : "") + '"></div>' +
+        '<div class="field"><label>Archivo PDF' + (di ? " (opcional, sustituye al actual)" : "") + '</label><input type="file" name="pdf" accept="application/pdf"' + (di ? "" : " required") + "></div>" +
+        (ui.formError ? '<p class="field-error">' + escapeHtml(ui.formError) + "</p>" : "") +
+        modalFoot(di ? "Guardar cambios" : "Publicar") + "</form>");
+    }
+    return '<div class="modal-overlay" id="modal-overlay"></div>';
+  }
+
+  /* ---------- admin: guardar / eliminar ---------- */
+  async function adminGuardarTrabajador(form, id) {
+    var numero = form.numero.value.trim();
+    var nombre = form.nombre.value.trim();
+    var puestoId = form.puesto.value || null;
+    if (!id && !numero) { ui.formError = "Indica el número de empleado."; render(); return; }
+    if (!nombre) { ui.formError = "Indica el nombre completo."; render(); return; }
+    ui.busy = true; ui.formError = ""; render();
+    var res;
+    if (id) {
+      res = await sb.from("trabajadores").update({ nombre: nombre, puesto_id: puestoId }).eq("id", id);
+    } else {
+      res = await sb.from("trabajadores").insert({ numero_empleado: numero, nombre: nombre, puesto_id: puestoId });
+    }
+    ui.busy = false;
+    if (res.error) {
+      ui.formError = res.error.message.indexOf("duplicate") !== -1 ? "Ya existe un trabajador con ese número de empleado." : "No se ha podido guardar: " + res.error.message;
+      render();
+      return;
+    }
+    ui.modal = null; ui.formError = "";
+    await cargarAdminTrabajadores();
+    toast(id ? "Trabajador actualizado." : "Trabajador añadido.");
+  }
+  function adminResetAcceso(id) {
+    var t = ui.adminTrabajadores.filter(function (x) { return x.id === id; })[0]; if (!t) return;
+    if (!window.confirm('¿Restablecer el acceso de "' + t.nombre + '"? Deberá crear una contraseña nueva en su próximo inicio de sesión.')) return;
+    sb.rpc("admin_resetear_trabajador", { p_trabajador_id: id }).then(function (res) {
+      if (res.error) { toast("No se ha podido restablecer: " + res.error.message, 6000); return; }
+      cargarAdminTrabajadores();
+      toast("Acceso restablecido.");
+    });
+  }
+  function adminToggleBaja(id) {
+    var t = ui.adminTrabajadores.filter(function (x) { return x.id === id; })[0]; if (!t) return;
+    var msg = t.activo ? ('¿Dar de baja a "' + t.nombre + '"? No podrá volver a iniciar sesión hasta que lo reactives.') : ('¿Reactivar a "' + t.nombre + '"?');
+    if (!window.confirm(msg)) return;
+    sb.from("trabajadores").update({ activo: !t.activo }).eq("id", id).then(function (res) {
+      if (res.error) { toast("No se ha podido actualizar: " + res.error.message, 6000); return; }
+      cargarAdminTrabajadores();
+      toast(t.activo ? "Trabajador dado de baja." : "Trabajador reactivado.");
+    });
+  }
+
+  async function adminGuardarPuesto(form, id) {
+    var nombre = form.nombre.value.trim();
+    var riesgosRaw = form.riesgos.value.trim();
+    var riesgos = riesgosRaw ? riesgosRaw.split("\n").map(function (s) { return s.trim(); }).filter(Boolean) : [];
+    var episObligatorios = Array.prototype.slice.call(form.querySelectorAll('input[name="epiOb"]:checked')).map(function (i) { return i.value; });
+    if (!nombre) { ui.formError = "Indica el nombre del puesto."; render(); return; }
+    ui.busy = true; ui.formError = ""; render();
+    var puestoId = id;
+    var res = id ? await sb.from("puestos").update({ nombre: nombre, riesgos: riesgos }).eq("id", id) :
+      await sb.from("puestos").insert({ nombre: nombre, riesgos: riesgos }).select().single();
+    if (res.error) { ui.busy = false; ui.formError = "No se ha podido guardar: " + res.error.message; render(); return; }
+    if (!id) puestoId = res.data.id;
+    await sb.from("puesto_epis").delete().eq("puesto_id", puestoId);
+    if (episObligatorios.length) {
+      await sb.from("puesto_epis").insert(episObligatorios.map(function (eid) { return { puesto_id: puestoId, epi_id: eid }; }));
+    }
+    ui.busy = false; ui.modal = null; ui.formError = "";
+    await cargarCatalogo();
+    toast(id ? "Puesto actualizado." : "Puesto añadido.");
+  }
+  function adminEliminarPuesto(id) {
+    if (!window.confirm("¿Eliminar este puesto de trabajo?")) return;
+    sb.from("puestos").delete().eq("id", id).then(function (res) {
+      if (res.error) { toast("No se ha podido eliminar: " + res.error.message, 6000); return; }
+      cargarCatalogo().then(function () { render(); });
+      toast("Puesto eliminado.");
+    });
+  }
+
+  async function adminGuardarEpi(form, id) {
+    var nombre = form.nombre.value.trim();
+    var categoria = form.categoria.value || null;
+    var tallasRaw = form.tallas.value.trim();
+    var tallas = tallasRaw ? tallasRaw.split(",").map(function (s) { return s.trim(); }).filter(Boolean) : [];
+    var umbral = parseInt(form.umbral.value, 10);
+    if (!nombre) { ui.formError = "Indica el nombre del EPI."; render(); return; }
+    if (isNaN(umbral) || umbral < 0) { ui.formError = "Indica un umbral de alerta válido."; render(); return; }
+    var fotoFile = form.foto && form.foto.files[0];
+    var pdfFile = form.fichaPdf && form.fichaPdf.files[0];
+    ui.busy = true; ui.formError = ""; render();
+
+    var payload = {
+      nombre: nombre, categoria: categoria, tallas: tallas, umbral: umbral,
+      normativa: form.normativa.value.trim() || null, marcado_ce: form.marcadoCE.value.trim() || null,
+      instrucciones: form.instrucciones.value.trim() || null, mantenimiento: form.mantenimiento.value.trim() || null,
+      vida_util: form.vidaUtil.value.trim() || null
+    };
+    try {
+      var epiId = id;
+      if (id) {
+        var upd = await sb.from("epis").update(payload).eq("id", id);
+        if (upd.error) throw new Error(upd.error.message);
+      } else {
+        var stockInicial = parseInt(form.stock.value, 10);
+        if (isNaN(stockInicial) || stockInicial < 0) stockInicial = 0;
+        payload.stock = stockInicial;
+        var ins = await sb.from("epis").insert(payload).select().single();
+        if (ins.error) throw new Error(ins.error.message);
+        epiId = ins.data.id;
+      }
+      if (fotoFile) {
+        var pathFoto = "epis/" + epiId + "/foto-" + uuid() + "." + fileExt(fotoFile.name);
+        await subirArchivo("epi-fotos", pathFoto, fotoFile);
+        await sb.from("epis").update({ foto_url: publicUrl("epi-fotos", pathFoto) }).eq("id", epiId);
+      }
+      if (pdfFile) {
+        var pathPdf = "epis/" + epiId + "/ficha-" + uuid() + ".pdf";
+        await subirArchivo("fichas-pdf", pathPdf, pdfFile);
+        await sb.from("epis").update({ ficha_pdf_url: pathPdf }).eq("id", epiId);
+      }
+    } catch (err) {
+      ui.busy = false; ui.formError = "No se ha podido guardar: " + err.message; render(); return;
+    }
+    ui.busy = false; ui.modal = null; ui.formError = "";
+    await cargarCatalogo();
+    toast(id ? "EPI actualizado." : "EPI añadido al catálogo.");
+  }
+  function adminEliminarEpi(id) {
+    if (!window.confirm("¿Eliminar este EPI del catálogo? El historial de solicitudes se conservará.")) return;
+    sb.from("epis").delete().eq("id", id).then(function (res) {
+      if (res.error) { toast("No se ha podido eliminar: " + res.error.message, 6000); return; }
+      cargarCatalogo().then(function () { render(); });
+      toast("EPI eliminado.");
+    });
+  }
+  async function adminReponer(form, id) {
+    var epi = getEpi(id);
+    var cantidad = parseInt(form.cantidad.value, 10);
+    var responsable = form.responsable.value.trim();
+    if (!epi) { ui.modal = null; render(); return; }
+    if (!cantidad || cantidad < 1) { ui.formError = "Indica una cantidad válida."; render(); return; }
+    if (!responsable) { ui.formError = "Indica quién realiza la reposición."; render(); return; }
+    ui.busy = true; ui.formError = ""; render();
+    var nuevoStock = epi.stock + cantidad;
+    var upd = await sb.from("epis").update({ stock: nuevoStock }).eq("id", id);
+    if (upd.error) { ui.busy = false; ui.formError = "No se ha podido reponer: " + upd.error.message; render(); return; }
+    await sb.from("movimientos").insert({ tipo: "reposicion", trabajador_id: null, trabajador_nombre: null, epi_id: epi.id, epi_nombre: epi.nombre, talla: null, cantidad: cantidad, firma_url: null, responsable: responsable });
+    ui.busy = false; ui.modal = null; ui.formError = "";
+    await cargarCatalogo();
+    if (ui.adminHistorial !== null) await cargarAdminHistorial();
+    toast("Stock repuesto: +" + cantidad + " × " + epi.nombre + ".");
+  }
+
+  async function adminGuardarEmpresa(form) {
+    var nombre = form.nombre.value.trim();
+    var t1 = form.tituloPrincipal.value.trim();
+    var t2 = form.tituloSecundario.value.trim();
+    if (!nombre || !t1 || !t2) { ui.formError = "Rellena todos los campos."; render(); return; }
+    var logoFile = form.logo && form.logo.files[0];
+    ui.busy = true; ui.formError = ""; render();
+    var logoUrl = EMPRESA.logo_url;
+    try {
+      if (logoFile) {
+        var path = "branding/logo-" + uuid() + "." + fileExt(logoFile.name);
+        await subirArchivo("epi-fotos", path, logoFile);
+        logoUrl = publicUrl("epi-fotos", path);
+      }
+      var upd = await sb.from("empresa_config").update({ nombre: nombre, titulo_principal: t1, titulo_secundario: t2, logo_url: logoUrl }).eq("id", 1);
+      if (upd.error) throw new Error(upd.error.message);
+    } catch (err) {
+      ui.busy = false; ui.formError = "No se ha podido guardar: " + err.message; render(); return;
+    }
+    ui.busy = false; ui.formError = "";
+    await cargarBranding();
+    toast("Datos de la empresa actualizados.");
+    render();
+  }
+
+  async function adminGuardarDocInteres(form, id) {
+    var titulo = form.titulo.value.trim();
+    var categoria = form.categoria.value.trim();
+    var pdfFile = form.pdf.files[0];
+    if (!titulo) { ui.formError = "Indica el título del documento."; render(); return; }
+    if (!id && !pdfFile) { ui.formError = "Adjunta el archivo PDF."; render(); return; }
+    ui.busy = true; ui.formError = ""; render();
+    try {
+      var docId = id;
+      var payload = { titulo: titulo, categoria: categoria || null };
+      if (id) {
+        var upd = await sb.from("documentos_interes").update(payload).eq("id", id);
+        if (upd.error) throw new Error(upd.error.message);
+      } else {
+        var ins = await sb.from("documentos_interes").insert(payload).select().single();
+        if (ins.error) throw new Error(ins.error.message);
+        docId = ins.data.id;
+      }
+      if (pdfFile) {
+        var path = "docs/" + docId + "/" + uuid() + ".pdf";
+        await subirArchivo("documentos-interes", path, pdfFile);
+        await sb.from("documentos_interes").update({ pdf_url: path }).eq("id", docId);
+      }
+    } catch (err) {
+      ui.busy = false; ui.formError = "No se ha podido guardar: " + err.message; render(); return;
+    }
+    ui.busy = false; ui.modal = null; ui.formError = "";
+    await cargarCatalogo();
+    toast(id ? "Documento actualizado." : "Documento publicado.");
+  }
+  function adminEliminarDocInteres(id) {
+    if (!window.confirm("¿Eliminar este documento?")) return;
+    sb.from("documentos_interes").delete().eq("id", id).then(function (res) {
+      if (res.error) { toast("No se ha podido eliminar: " + res.error.message, 6000); return; }
+      cargarCatalogo().then(function () { render(); });
+      toast("Documento eliminado.");
+    });
+  }
+
+  async function adminCambiarPassword(form) {
+    var p1 = form.p1.value, p2 = form.p2.value;
+    if (!p1 || p1.length < 4) { ui.formError = "La contraseña debe tener al menos 4 caracteres."; render(); return; }
+    if (p1 !== p2) { ui.formError = "Las contraseñas no coinciden."; render(); return; }
+    ui.busy = true; ui.formError = ""; render();
+    var res = await sb.auth.updateUser({ password: p1 });
+    ui.busy = false;
+    if (res.error) { ui.formError = "No se ha podido cambiar la contraseña: " + res.error.message; render(); return; }
+    ui.formError = "";
+    toast("Contraseña actualizada correctamente.");
+    render();
   }
 
   /* ---------- impresión ---------- */
@@ -661,6 +1195,19 @@
         '<tr><td class="k">Instrucciones de uso</td><td>' + escapeHtml(epi.instrucciones || "—") + '</td></tr>' +
         '<tr><td class="k">Mantenimiento</td><td>' + escapeHtml(epi.mantenimiento || "—") + '</td></tr>' +
         '<tr><td class="k">Vida útil</td><td>' + escapeHtml(epi.vida_util || "—") + '</td></tr>' +
+        '</table></div>';
+    } else if (kind === "historial") {
+      var filtro = ui.filtroHistorial.trim().toLowerCase();
+      var movs = (ui.adminHistorial || []).filter(function (m) {
+        if (!filtro) return true;
+        return ((m.trabajador_nombre || m.responsable || "") + " " + (m.epi_nombre || "")).toLowerCase().indexOf(filtro) !== -1;
+      });
+      html = '<div class="print-doc"><h2>Historial de movimientos de EPIs</h2>' +
+        '<div class="print-meta">Documento generado el ' + fmtDateTime(new Date().toISOString()) + (filtro ? (' · filtro: "' + escapeHtml(ui.filtroHistorial) + '"') : '') + '</div>' +
+        '<table><tr><th>Fecha</th><th>Tipo</th><th>Trabajador / Responsable</th><th>EPI</th><th>Talla</th><th>Cantidad</th></tr>' +
+        movs.map(function (m) {
+          return '<tr><td>' + fmtDateTime(m.ts) + '</td><td>' + (m.tipo === "solicitud" ? "Solicitud" : "Reposición") + '</td><td>' + escapeHtml(m.trabajador_nombre || m.responsable || "—") + '</td><td>' + escapeHtml(m.epi_nombre || "—") + '</td><td>' + (m.talla ? escapeHtml(m.talla) : "—") + '</td><td>' + (m.tipo === "solicitud" ? "-" : "+") + m.cantidad + '</td></tr>';
+        }).join("") +
         '</table></div>';
     }
     if (!html) return;
@@ -742,12 +1289,6 @@
       "</div></header>";
   }
 
-  function renderAdminScreen() {
-    return renderAdminHeader() +
-      '<main><h2 style="font-size:20px;margin-bottom:10px;">Panel de administración</h2>' +
-      '<p class="field-hint">Sesión de administrador conectada correctamente a Supabase. El resto del panel (trabajadores, EPIs, puestos, historial, empresas externas...) se está migrando por partes.</p>' +
-      "</main>";
-  }
 
   function render() {
     var root = document.getElementById("root");
@@ -774,7 +1315,7 @@
     } else if (ui.screen === "solicitud") {
       html = renderWorkerHeader() + "<main>" + renderSolicitudScreen() + "</main>" + renderWorkerModal();
     } else if (ui.screen === "admin") {
-      html = renderAdminScreen();
+      html = renderAdminHeader() + "<main>" + renderAdminScreen() + "</main>" + renderAdminModal();
     }
     root.innerHTML = html;
     if (ui.screen === "solicitud" && ui.solicitud && ui.solicitud.step === 3) {
@@ -785,7 +1326,10 @@
   /* ---------- eventos ---------- */
   document.addEventListener("click", function (e) {
     var el = e.target.closest("[data-action]");
-    if (!el) return;
+    if (!el) {
+      if (e.target && e.target.id === "modal-overlay") closeModal();
+      return;
+    }
     var action = el.getAttribute("data-action");
     var id = el.getAttribute("data-id");
     if (action === "admin-login") goAdminLogin();
@@ -819,6 +1363,18 @@
     else if (action === "print-solicitud") printDoc("solicitud");
     else if (action === "print-ficha") printDoc("ficha", id);
     else if (action === "finalizar-solicitud") finishSolicitud();
+    else if (action === "admin-tab") adminGoTab(el.getAttribute("data-tab"));
+    else if (action === "admin-open-trabajador") { ui.modal = { mode: "trabajador", id: id || null }; ui.formError = ""; render(); }
+    else if (action === "admin-open-puesto") { ui.modal = { mode: "puesto", id: id || null }; ui.formError = ""; render(); }
+    else if (action === "admin-open-epi") { ui.modal = { mode: "epi", id: id || null }; ui.formError = ""; render(); }
+    else if (action === "admin-open-reponer") { ui.modal = { mode: "reponer", id: id }; ui.formError = ""; render(); }
+    else if (action === "admin-open-doc-interes") { ui.modal = { mode: "doc-interes", id: id || null }; ui.formError = ""; render(); }
+    else if (action === "admin-reset-acceso") adminResetAcceso(id);
+    else if (action === "admin-toggle-baja") adminToggleBaja(id);
+    else if (action === "admin-eliminar-puesto") adminEliminarPuesto(id);
+    else if (action === "admin-eliminar-epi") adminEliminarEpi(id);
+    else if (action === "admin-eliminar-doc-interes") adminEliminarDocInteres(id);
+    else if (action === "print-historial") printDoc("historial");
   });
 
   document.addEventListener("submit", function (e) {
@@ -826,6 +1382,28 @@
     if (f && f.id === "form-login") { e.preventDefault(); submitLogin(f); }
     else if (f && f.id === "form-crear-password") { e.preventDefault(); submitCrearPassword(f); }
     else if (f && f.id === "form-admin-login") { e.preventDefault(); submitAdminLogin(f); }
+    else if (f && f.id === "form-empresa") { e.preventDefault(); adminGuardarEmpresa(f); }
+    else if (f && f.id === "form-admin-password") { e.preventDefault(); adminCambiarPassword(f); }
+    else if (f && f.id === "form-admin-modal") {
+      e.preventDefault();
+      if (!ui.modal) return;
+      var mode = ui.modal.mode, id = ui.modal.id;
+      if (mode === "trabajador") adminGuardarTrabajador(f, id);
+      else if (mode === "puesto") adminGuardarPuesto(f, id);
+      else if (mode === "epi") adminGuardarEpi(f, id);
+      else if (mode === "reponer") adminReponer(f, id);
+      else if (mode === "doc-interes") adminGuardarDocInteres(f, id);
+    }
+  });
+
+  document.addEventListener("input", function (e) {
+    var t = e.target;
+    if (!t) return;
+    if (t.matches('[data-action="filter-historial"]')) {
+      ui.filtroHistorial = t.value; render();
+      var inp = document.querySelector('[data-action="filter-historial"]');
+      if (inp) { inp.focus(); inp.selectionStart = inp.selectionEnd = inp.value.length; }
+    }
   });
 
   boot();
