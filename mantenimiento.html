@@ -156,6 +156,40 @@
   .tarea-check .meta{font-size:11.5px;color:var(--steel-400);margin-top:1px;}
   .tarea-children{margin-left:22px;border-left:2px solid var(--steel-100);padding-left:8px;}
 
+  /* ---------- Wizard: navegación en cascada por niveles ---------- */
+  .elemento-grid{display:flex;flex-wrap:wrap;gap:10px;}
+  .elemento-card{
+    position:relative;padding:14px 18px;border-radius:10px;border:1.5px solid var(--steel-200);background:#fff;
+    font-weight:700;font-size:14px;color:var(--steel-700);min-width:110px;text-align:center;
+  }
+  .elemento-card.active{border-color:var(--steel-900);background:var(--steel-900);color:#fff;}
+  .elemento-card-badge{
+    position:absolute;top:-7px;right:-7px;background:var(--amber);color:#1a1200;font-size:11px;font-weight:800;
+    width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  }
+  .nivel-browser{margin-top:16px;border:1px solid var(--steel-200);border-radius:10px;padding:14px;background:var(--steel-50);}
+  .breadcrumb{display:flex;flex-wrap:wrap;align-items:center;gap:2px;margin-bottom:12px;font-size:12.5px;}
+  .breadcrumb button{background:none;border:none;color:var(--amber-dark);font-weight:700;font-size:12.5px;padding:2px 4px;}
+  .breadcrumb button:last-child{color:var(--steel-900);}
+  .breadcrumb .crumb-sep{color:var(--steel-400);}
+  .nivel-list{display:flex;flex-direction:column;gap:8px;}
+  .nivel-card{
+    display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--steel-200);border-radius:10px;
+    padding:10px 12px;text-align:left;width:100%;
+  }
+  .nivel-card.branch{justify-content:space-between;font-weight:700;color:var(--steel-800);font-size:14px;}
+  .nivel-card.branch:hover{border-color:var(--steel-400);}
+  .nivel-card.branch .chevron{color:var(--steel-400);font-size:18px;}
+  .nivel-card.leaf{cursor:pointer;}
+  .nivel-card.leaf:hover{border-color:var(--steel-400);}
+  .nivel-card.leaf.selected{border-color:var(--amber);background:var(--amber-50);}
+  .nivel-card.leaf input{width:17px;height:17px;accent-color:var(--amber-dark);flex-shrink:0;}
+  .nivel-photo{width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--steel-200);flex-shrink:0;}
+  .nivel-photo.ph{display:flex;align-items:center;justify-content:center;background:var(--steel-100);font-size:18px;}
+  .nivel-info{min-width:0;}
+  .nivel-card-name{font-size:13.5px;font-weight:700;color:var(--steel-900);}
+  .nivel-meta{font-size:11.5px;color:var(--steel-600);margin-top:1px;}
+
   .selected-summary{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px;}
   .sel-chip{background:var(--steel-900);color:#fff;font-size:12px;font-weight:600;padding:6px 8px 6px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;}
   .sel-chip button{background:none;border:none;color:var(--steel-400);font-size:13px;padding:0;line-height:1;}
@@ -546,7 +580,7 @@ function renderTab(){
 async function renderTabNuevo(){
   const el = document.getElementById('tab-content');
   if(!state.wizard){
-    state.wizard = { lineas:null, lineaId:null, tipo:null, elementosData:null, selected:new Map(), tareaIndex:{}, observaciones:'' };
+    state.wizard = { lineas:null, lineaId:null, tipo:null, elementos:null, elementoId:null, treeCache:{}, navStack:[], selected:new Map(), observaciones:'' };
   }
   const w = state.wizard;
   if(w.lineas===null){
@@ -562,34 +596,49 @@ function drawWizard(){
   const w = state.wizard;
   let html = '<div class="card"><h2>Nuevo registro de mantenimiento</h2>';
 
-  html += '<div class="section-title">Línea</div><div class="chip-row" id="wiz-lineas">';
+  html += '<div class="section-title">1. Línea</div><div class="chip-row" id="wiz-lineas">';
   html += w.lineas.map(l=>`<button class="chip-btn ${w.lineaId===l.id?'selected':''}" data-linea="${l.id}">${esc(l.codigo)}${l.nombre && l.nombre!==l.codigo ? ' · '+esc(l.nombre):''}</button>`).join('');
   html += '</div>';
 
   if(w.lineaId){
-    html += '<div class="section-title" style="margin-top:18px;">Tipo de mantenimiento</div>';
+    html += '<div class="section-title" style="margin-top:18px;">2. Tipo de mantenimiento</div>';
     html += `<div class="tipo-row">
       <button class="tipo-btn preventivo ${w.tipo==='preventivo'?'selected':''}" data-tipo="preventivo">🔧 Preventivo</button>
       <button class="tipo-btn correctivo ${w.tipo==='correctivo'?'selected':''}" data-tipo="correctivo">⚠️ Correctivo</button>
     </div>`;
   }
 
-  if(w.lineaId && w.elementosData===null){
-    html += '<div class="spinner"></div>';
-  } else if(w.lineaId && w.elementosData){
-    html += '<div class="section-title" style="margin-top:18px;">Elemento(s) y tarea(s) realizadas</div>';
-    if(w.elementosData.length===0){
+  if(w.lineaId && w.tipo){
+    html += '<div class="section-title" style="margin-top:18px;">3. Elemento a reparar</div>';
+    if(w.elementos===null){
+      html += '<div class="spinner"></div>';
+    } else if(w.elementos.length===0){
       html += '<div class="empty-state">Esta línea no tiene elementos de mantenimiento configurados todavía. Añádelos desde Catálogo.</div>';
+    } else {
+      html += '<div class="elemento-grid" id="wiz-elementos">';
+      html += w.elementos.map(e=>{
+        const n = countSelectedForElemento(e.id);
+        return `<button class="elemento-card ${w.elementoId===e.id?'active':''}" data-elemento="${e.id}">
+          <span class="elemento-card-name">${esc(e.nombre)}</span>
+          ${n>0?`<span class="elemento-card-badge">${n}</span>`:''}
+        </button>`;
+      }).join('');
+      html += '</div>';
+
+      if(w.elementoId){
+        const cache = w.treeCache[w.elementoId];
+        if(!cache){
+          html += '<div class="spinner"></div>';
+        } else {
+          const elemento = w.elementos.find(e=>e.id===w.elementoId);
+          html += renderNivelBrowser(w, cache, elemento ? elemento.nombre : '');
+        }
+      }
     }
-    w.elementosData.forEach(ed=>{
-      html += `<div class="elemento-block"><div class="elemento-head">${esc(ed.elemento.nombre)}</div><div class="elemento-body">`;
-      html += renderTareaNodes(ed.roots, w);
-      html += '</div></div>';
-    });
   }
 
   if(w.selected.size>0){
-    html += '<div class="section-title" style="margin-top:18px;">Seleccionado</div><div class="selected-summary">';
+    html += '<div class="section-title" style="margin-top:18px;">Seleccionado para este registro</div><div class="selected-summary">';
     for(const [tid, info] of w.selected){
       html += `<span class="sel-chip">${esc(info.tarea_nombre)}<button data-remove="${tid}">✕</button></span>`;
     }
@@ -607,20 +656,48 @@ function drawWizard(){
   bindWizardEvents();
 }
 
-function renderTareaNodes(nodes, w){
-  let html = '';
-  nodes.forEach(n=>{
-    if(n.children && n.children.length){
-      html += `<div class="tarea-group-label">${esc(n.nombre)}</div><div class="tarea-children">`;
-      html += renderTareaNodes(n.children, w);
-      html += '</div>';
-    } else {
-      const checked = w.selected.has(n.id);
-      html += `<label class="tarea-check"><input type="checkbox" data-tarea="${n.id}" ${checked?'checked':''}>
-        <div><div class="label">${esc(n.nombre)}</div>${n.referencia||n.ubicacion?`<div class="meta">${n.referencia?'Ref: '+esc(n.referencia):''}${n.ubicacion?' · '+esc(n.ubicacion):''}</div>`:''}</div>
-      </label>`;
-    }
+function countSelectedForElemento(elementoId){
+  let n = 0;
+  for(const info of state.wizard.selected.values()){ if(info.elemento_id===elementoId) n++; }
+  return n;
+}
+
+function renderNivelBrowser(w, cache, elementoNombre){
+  const currentParent = w.navStack.length ? cache.byId[w.navStack[w.navStack.length-1]] : null;
+  const currentNodes = currentParent ? currentParent.children : cache.roots;
+
+  let html = '<div class="nivel-browser">';
+  html += `<div class="breadcrumb"><button data-crumb="-1">${esc(elementoNombre)}</button>`;
+  w.navStack.forEach((id,idx)=>{
+    const node = cache.byId[id];
+    html += `<span class="crumb-sep">›</span><button data-crumb="${idx}">${esc(node?node.nombre:'')}</button>`;
   });
+  html += '</div>';
+
+  if(currentNodes.length===0){
+    html += '<div class="empty-state">No hay tareas configuradas aquí todavía. Añádelas desde Catálogo.</div>';
+  } else {
+    html += '<div class="nivel-list">';
+    currentNodes.forEach(n=>{
+      const isBranch = n.children && n.children.length>0;
+      if(isBranch){
+        html += `<button class="nivel-card branch" data-drill="${n.id}"><span class="nivel-card-name">${esc(n.nombre)}</span><span class="chevron">›</span></button>`;
+      } else {
+        const checked = w.selected.has(n.id);
+        html += `<label class="nivel-card leaf ${checked?'selected':''}">
+          <input type="checkbox" data-tarea="${n.id}" ${checked?'checked':''}>
+          ${n.foto_url?`<img class="nivel-photo" src="${esc(n.foto_url)}">`:'<div class="nivel-photo ph">🔧</div>'}
+          <div class="nivel-info">
+            <div class="nivel-card-name">${esc(n.nombre)}</div>
+            ${n.referencia?`<div class="nivel-meta">Ref: ${esc(n.referencia)}</div>`:''}
+            ${n.ubicacion?`<div class="nivel-meta">📍 ${esc(n.ubicacion)}</div>`:''}
+          </div>
+        </label>`;
+      }
+    });
+    html += '</div>';
+  }
+  html += '</div>';
   return html;
 }
 
@@ -630,19 +707,39 @@ function bindWizardEvents(){
     btn.onclick = async ()=>{
       const id = btn.dataset.linea;
       if(w.lineaId===id) return;
-      w.lineaId = id; w.elementosData=null; w.selected=new Map();
+      w.lineaId = id; w.tipo=null; w.elementos=null; w.elementoId=null; w.navStack=[]; w.selected=new Map(); w.treeCache={};
       drawWizard();
-      await loadElementosParaLinea(id);
+      await loadElementosList(id);
       drawWizard();
     };
   });
   document.querySelectorAll('.tipo-btn').forEach(btn=>{
     btn.onclick = ()=>{ w.tipo = btn.dataset.tipo; drawWizard(); };
   });
-  document.querySelectorAll('.tarea-check input').forEach(cb=>{
+  document.querySelectorAll('#wiz-elementos .elemento-card').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.elemento;
+      w.elementoId = id; w.navStack=[];
+      drawWizard();
+      await ensureElementoTree(id);
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('[data-crumb]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const idx = parseInt(btn.dataset.crumb,10);
+      w.navStack = idx<0 ? [] : w.navStack.slice(0, idx+1);
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('[data-drill]').forEach(btn=>{
+    btn.onclick = ()=>{ w.navStack.push(btn.dataset.drill); drawWizard(); };
+  });
+  document.querySelectorAll('.nivel-card.leaf input').forEach(cb=>{
     cb.onchange = ()=>{
       const tid = cb.dataset.tarea;
-      if(cb.checked){ w.selected.set(tid, w.tareaIndex[tid]); }
+      const cache = w.treeCache[w.elementoId];
+      if(cb.checked){ w.selected.set(tid, cache.tareaIndex[tid]); }
       else { w.selected.delete(tid); }
       drawWizard();
     };
@@ -656,21 +753,21 @@ function bindWizardEvents(){
   if(btnGuardar) btnGuardar.onclick = guardarRegistro;
 }
 
-async function loadElementosParaLinea(lineaId){
+async function loadElementosList(lineaId){
   const w = state.wizard;
   const { data:linkRows } = await sb.from('mant_linea_elementos').select('elemento_id, mant_elementos(id,nombre,activo)').eq('linea_id', lineaId);
-  const elementos = (linkRows||[]).map(r=>r.mant_elementos).filter(e=>e && e.activo);
-  w.tareaIndex = {};
-  const elementosData = [];
-  for(const elemento of elementos){
-    const { data:tareas } = await sb.from('mant_tareas').select('*').eq('elemento_id', elemento.id).eq('activo', true).order('orden');
-    const tree = buildTareaTree(tareas||[], elemento.nombre, w.tareaIndex);
-    elementosData.push({ elemento, roots: tree });
-  }
-  w.elementosData = elementosData;
+  w.elementos = (linkRows||[]).map(r=>r.mant_elementos).filter(e=>e && e.activo);
 }
 
-function buildTareaTree(tareas, elementoNombre, tareaIndex){
+async function ensureElementoTree(elementoId){
+  const w = state.wizard;
+  if(w.treeCache[elementoId]) return;
+  const elemento = w.elementos.find(e=>e.id===elementoId);
+  const { data:tareas } = await sb.from('mant_tareas').select('*').eq('elemento_id', elementoId).eq('activo', true).order('orden');
+  w.treeCache[elementoId] = buildTareaTree(tareas||[], elemento);
+}
+
+function buildTareaTree(tareas, elemento){
   const byId = {};
   tareas.forEach(t=> byId[t.id] = Object.assign({}, t, {children:[]}));
   const roots = [];
@@ -678,11 +775,13 @@ function buildTareaTree(tareas, elementoNombre, tareaIndex){
     if(t.parent_id && byId[t.parent_id]){ byId[t.parent_id].children.push(byId[t.id]); }
     else { roots.push(byId[t.id]); }
   });
+  const tareaIndex = {};
   function walk(node, pathParts){
     const path = pathParts.concat([node.nombre]);
     if(node.children.length===0){
       tareaIndex[node.id] = {
-        elemento_nombre: elementoNombre,
+        elemento_id: elemento.id,
+        elemento_nombre: elemento.nombre,
         tarea_nombre: path.join(' › '),
         tarea_id: node.id,
         referencia: node.referencia || null,
@@ -694,7 +793,7 @@ function buildTareaTree(tareas, elementoNombre, tareaIndex){
     }
   }
   roots.forEach(r=> walk(r, []));
-  return roots;
+  return { roots, byId, tareaIndex };
 }
 
 async function guardarRegistro(){
@@ -728,7 +827,7 @@ async function guardarRegistro(){
     if(itemsErr) throw itemsErr;
 
     toast('Registro guardado correctamente', 'success');
-    state.wizard = { lineas:w.lineas, lineaId:null, tipo:null, elementosData:null, selected:new Map(), tareaIndex:{}, observaciones:'' };
+    state.wizard = { lineas:w.lineas, lineaId:null, tipo:null, elementos:null, elementoId:null, treeCache:{}, navStack:[], selected:new Map(), observaciones:'' };
     state.misRegistros = null;
     drawWizard();
   }catch(e){
