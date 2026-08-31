@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mantenimiento</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --steel-900:#111827;
+    --steel-800:#1f2937;
+    --steel-700:#374151;
+    --steel-600:#4b5563;
+    --steel-400:#9ca3af;
+    --steel-200:#e5e7eb;
+    --steel-100:#f3f4f6;
+    --steel-50:#f9fafb;
+    --amber:#f59e0b;
+    --amber-dark:#b45309;
+    --amber-50:#fffbeb;
+    --green:#16a34a;
+    --red:#dc2626;
+    --red-50:#fef2f2;
+    --blue:#2563eb;
+    --radius:12px;
+    --shadow:0 1px 2px rgba(17,24,39,.06), 0 1px 3px rgba(17,24,39,.08);
+    --shadow-lg:0 10px 25px -5px rgba(17,24,39,.15), 0 8px 10px -6px rgba(17,24,39,.08);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background:var(--steel-100);
+    color:var(--steel-900);
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{min-height:100vh;display:flex;flex-direction:column;}
+  a{color:inherit;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select,textarea{font-family:inherit;}
+
+  /* ---------- Login ---------- */
+  .login-wrap{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(160deg,var(--steel-900) 0%,var(--steel-800) 45%,var(--steel-700) 100%);
+    padding:24px;
+  }
+  .login-card{
+    width:100%;max-width:400px;background:#fff;border-radius:16px;
+    box-shadow:var(--shadow-lg);padding:32px 28px;
+  }
+  .login-brand{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:22px;text-align:center;}
+  .login-brand img{width:56px;height:56px;object-fit:contain;border-radius:10px;}
+  .login-brand .empresa{font-size:12.5px;color:var(--steel-600);font-weight:600;letter-spacing:.02em;}
+  .login-brand h1{font-size:22px;font-weight:800;margin:0;color:var(--steel-900);}
+  .login-brand .sub{font-size:13px;color:var(--amber-dark);font-weight:600;background:var(--amber-50);padding:2px 10px;border-radius:999px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--steel-700);margin-bottom:6px;}
+  .field input{
+    width:100%;padding:11px 12px;border:1.5px solid var(--steel-200);border-radius:9px;
+    font-size:15px;color:var(--steel-900);outline:none;transition:border-color .15s;
+  }
+  .field input:focus{border-color:var(--amber);}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    border:none;border-radius:9px;padding:11px 18px;font-size:14.5px;font-weight:700;
+    transition:filter .15s, transform .05s;width:100%;
+  }
+  .btn:active{transform:scale(.98);}
+  .btn-primary{background:var(--steel-900);color:#fff;}
+  .btn-primary:hover{filter:brightness(1.15);}
+  .btn-amber{background:var(--amber);color:#1a1200;}
+  .btn-amber:hover{filter:brightness(1.06);}
+  .btn-ghost{background:transparent;color:var(--steel-600);}
+  .btn-ghost:hover{background:var(--steel-100);}
+  .btn-outline{background:#fff;color:var(--steel-800);border:1.5px solid var(--steel-200);}
+  .btn-outline:hover{border-color:var(--steel-400);}
+  .btn-danger{background:var(--red-50);color:var(--red);}
+  .btn-danger:hover{filter:brightness(0.98);}
+  .btn-sm{width:auto;padding:7px 12px;font-size:13px;border-radius:7px;}
+  .btn[disabled]{opacity:.5;pointer-events:none;}
+  .login-alt{text-align:center;margin-top:16px;}
+  .login-alt button{background:none;border:none;color:var(--steel-600);font-size:12.5px;text-decoration:underline;}
+  .error-box{background:var(--red-50);color:var(--red);border:1px solid #fecaca;border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:14px;}
+  .info-box{background:var(--amber-50);color:var(--amber-dark);border:1px solid #fde68a;border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:14px;}
+  .hint{font-size:12px;color:var(--steel-400);margin-top:4px;}
+
+  /* ---------- Shell ---------- */
+  header.topbar{
+    background:var(--steel-900);color:#fff;padding:12px 18px;display:flex;align-items:center;
+    justify-content:space-between;gap:12px;position:sticky;top:0;z-index:20;box-shadow:var(--shadow);
+  }
+  .topbar-left{display:flex;align-items:center;gap:10px;min-width:0;}
+  .topbar-left img{width:32px;height:32px;border-radius:7px;object-fit:contain;background:#fff;}
+  .topbar-titles{line-height:1.2;min-width:0;}
+  .topbar-titles .app-name{font-weight:800;font-size:15px;}
+  .topbar-titles .empresa-name{font-size:11px;color:var(--steel-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;}
+  .topbar-right{display:flex;align-items:center;gap:10px;}
+  .user-chip{font-size:12.5px;background:var(--steel-800);padding:6px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;}
+  .user-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--amber);}
+  .logout-btn{background:transparent;border:1px solid var(--steel-700);color:var(--steel-200);border-radius:8px;padding:7px 10px;font-size:12.5px;font-weight:600;}
+  .logout-btn:hover{background:var(--steel-800);}
+
+  nav.tabs{
+    background:#fff;border-bottom:1px solid var(--steel-200);display:flex;gap:2px;padding:0 12px;
+    overflow-x:auto;position:sticky;top:56px;z-index:15;
+  }
+  nav.tabs button{
+    background:none;border:none;padding:13px 14px;font-size:13.5px;font-weight:600;color:var(--steel-600);
+    border-bottom:3px solid transparent;white-space:nowrap;
+  }
+  nav.tabs button.active{color:var(--steel-900);border-bottom-color:var(--amber);}
+  nav.tabs button:hover{color:var(--steel-900);}
+
+  main.content{flex:1;padding:20px 16px 60px;max-width:920px;margin:0 auto;width:100%;}
+  .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:16px;}
+  .card h2{font-size:15.5px;margin:0 0 14px;font-weight:700;color:var(--steel-900);}
+  .card h3{font-size:13.5px;margin:0 0 10px;font-weight:700;color:var(--steel-700);}
+  .section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--steel-400);margin:0 0 8px;}
+
+  .toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--steel-900);color:#fff;
+    padding:12px 20px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow-lg);
+    z-index:100;display:flex;align-items:center;gap:8px;
+  }
+  .toast.error{background:var(--red);}
+  .toast.success{background:var(--green);}
+
+  /* ---------- Wizard ---------- */
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip-btn{
+    padding:9px 14px;border-radius:9px;border:1.5px solid var(--steel-200);background:#fff;
+    font-size:13.5px;font-weight:600;color:var(--steel-700);
+  }
+  .chip-btn.selected{border-color:var(--amber);background:var(--amber-50);color:var(--amber-dark);}
+  .tipo-row{display:flex;gap:10px;}
+  .tipo-btn{
+    flex:1;padding:14px;border-radius:10px;border:1.5px solid var(--steel-200);background:#fff;
+    font-weight:700;font-size:14px;text-align:center;color:var(--steel-700);
+  }
+  .tipo-btn.preventivo.selected{border-color:var(--blue);background:#eff6ff;color:var(--blue);}
+  .tipo-btn.correctivo.selected{border-color:var(--red);background:var(--red-50);color:var(--red);}
+
+  .elemento-block{border:1px solid var(--steel-200);border-radius:10px;margin-bottom:10px;overflow:hidden;}
+  .elemento-head{background:var(--steel-50);padding:11px 14px;font-weight:700;font-size:13.5px;color:var(--steel-800);}
+  .elemento-body{padding:8px 14px 12px;}
+  .tarea-node{margin:2px 0;}
+  .tarea-group-label{font-size:12.5px;font-weight:700;color:var(--steel-600);margin:8px 0 2px;padding-left:2px;}
+  .tarea-check{display:flex;align-items:flex-start;gap:9px;padding:7px 2px;border-radius:7px;cursor:pointer;}
+  .tarea-check:hover{background:var(--steel-50);}
+  .tarea-check input{margin-top:3px;width:16px;height:16px;accent-color:var(--amber-dark);flex-shrink:0;}
+  .tarea-check .label{font-size:13.5px;color:var(--steel-900);}
+  .tarea-check .meta{font-size:11.5px;color:var(--steel-400);margin-top:1px;}
+  .tarea-children{margin-left:22px;border-left:2px solid var(--steel-100);padding-left:8px;}
+
+  .selected-summary{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px;}
+  .sel-chip{background:var(--steel-900);color:#fff;font-size:12px;font-weight:600;padding:6px 8px 6px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;}
+  .sel-chip button{background:none;border:none;color:var(--steel-400);font-size:13px;padding:0;line-height:1;}
+  .sel-chip button:hover{color:#fff;}
+
+  textarea{width:100%;padding:10px 12px;border:1.5px solid var(--steel-200);border-radius:9px;font-size:14px;resize:vertical;min-height:70px;outline:none;}
+  textarea:focus{border-color:var(--amber);}
+
+  /* ---------- Registros / historial ---------- */
+  .registro-card{border:1px solid var(--steel-200);border-radius:10px;padding:14px;margin-bottom:10px;}
+  .registro-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+  .registro-linea{font-weight:800;font-size:14.5px;color:var(--steel-900);}
+  .registro-fecha{font-size:12px;color:var(--steel-400);}
+  .badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em;}
+  .badge.preventivo{background:#eff6ff;color:var(--blue);}
+  .badge.correctivo{background:var(--red-50);color:var(--red);}
+  .item-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed var(--steel-200);font-size:13px;}
+  .item-row:first-of-type{border-top:none;}
+  .item-row img{width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--steel-200);}
+  .item-row .imgph{width:34px;height:34px;border-radius:6px;background:var(--steel-100);flex-shrink:0;}
+  .item-text b{color:var(--steel-900);}
+  .item-text .mini{color:var(--steel-400);font-size:11.5px;}
+  .obs-line{font-size:12.5px;color:var(--steel-600);margin-top:8px;font-style:italic;}
+  .worker-line{font-size:12px;color:var(--steel-400);margin-top:2px;}
+
+  .filters-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+  .filters-row select, .filters-row input{padding:8px 10px;border:1.5px solid var(--steel-200);border-radius:8px;font-size:13px;}
+
+  table.admin-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  table.admin-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--steel-400);padding:8px 10px;border-bottom:1.5px solid var(--steel-200);}
+  table.admin-table td{padding:9px 10px;border-bottom:1px solid var(--steel-100);vertical-align:middle;}
+  table.admin-table tr:last-child td{border-bottom:none;}
+  .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;}
+  .pill.on{background:#f0fdf4;color:var(--green);}
+  .pill.off{background:var(--steel-100);color:var(--steel-600);}
+
+  .inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:10px;padding-top:12px;border-top:1px dashed var(--steel-200);}
+  .inline-form .field{margin-bottom:0;min-width:140px;flex:1;}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
+  .subtabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
+  .subtabs button{padding:8px 14px;border-radius:999px;border:1.5px solid var(--steel-200);background:#fff;font-size:12.5px;font-weight:600;color:var(--steel-600);}
+  .subtabs button.active{background:var(--steel-900);color:#fff;border-color:var(--steel-900);}
+
+  .tree-node{margin:3px 0;}
+  .tree-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;background:var(--steel-50);}
+  .tree-row .name{font-size:13.5px;font-weight:600;flex:1;}
+  .tree-row .meta{font-size:11px;color:var(--steel-400);}
+  .tree-children{margin-left:20px;border-left:2px solid var(--steel-100);padding-left:10px;}
+  .icon-btn{background:none;border:1px solid var(--steel-200);border-radius:6px;width:26px;height:26px;font-size:13px;display:inline-flex;align-items:center;justify-content:center;color:var(--steel-600);}
+  .icon-btn:hover{background:#fff;border-color:var(--steel-400);}
+  .task-edit-box{background:#fff;border:1px solid var(--steel-200);border-radius:9px;padding:10px;margin-top:6px;}
+  .task-edit-box .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+  .task-edit-box input{padding:8px 9px;border:1.5px solid var(--steel-200);border-radius:7px;font-size:12.5px;flex:1;min-width:120px;}
+  .thumb-preview{width:44px;height:44px;object-fit:cover;border-radius:7px;border:1px solid var(--steel-200);}
+
+  .empty-state{text-align:center;padding:40px 20px;color:var(--steel-400);font-size:13.5px;}
+  .spinner{width:26px;height:26px;border:3px solid var(--steel-200);border-top-color:var(--amber);border-radius:50%;animation:spin .7s linear infinite;margin:40px auto;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .center-loading{display:flex;align-items:center;justify-content:center;min-height:100vh;}
+
+  @media (max-width:520px){
+    .login-card{padding:26px 20px;}
+    .topbar-titles .empresa-name{max-width:140px;}
+  }
+</style>
+</head>
+<body>
+<div id="app"><div class="center-loading"><div class="spinner"></div></div></div>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const SUPABASE_URL = "https://tqquotgibizuqtcufknu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxcXVvdGdpYml6dXF0Y3Vma251Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3ODY2MzEsImV4cCI6MjEwMzM2MjYzMX0.pz7hiQu301-h2jeHkp0KXKqA9D7NW490QP1xVDgk3H0";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  ready:false,
+  session:null,
+  perfil:null,        // {rol, trabajador_id}
+  trabajador:null,     // {id, numero_empleado, nombre}
+  empresa:null,
+  loginMode:'trabajador', // trabajador | admin
+  loginStep:'numero',     // numero | crear | password | adminform
+  loginNumero:'',
+  loginNombrePreview:'',
+  loginError:'',
+  loginLoading:false,
+  tab:'nuevo',
+  wizard:null,
+  misRegistros:null,
+  historial:null,
+  historialFiltros:{linea:'', tipo:'', trabajador:'', desde:'', hasta:''},
+  catalogoTab:'lineas',
+  catalogo:{lineas:null, elementos:null, lineaElementos:null, tareasPorElemento:{}, elementoSel:null, editingTareaId:null, addingSubTo:null},
+  accesos:null,
+};
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+function esc(s){
+  if(s===null||s===undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtFechaHora(iso){
+  try{
+    const d = new Date(iso);
+    return d.toLocaleString('es-ES', {timeZone:'Europe/Madrid', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+  }catch(e){ return iso; }
+}
+let toastTimer=null;
+function toast(msg, type){
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' '+type : '');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  clearTimeout(toastTimer);
+  setTimeout(()=>el.remove(), 3200);
+}
+function uid(){ return Math.random().toString(36).slice(2,10); }
+
+/* ============================================================
+   AUTH / BOOTSTRAP
+   ============================================================ */
+async function loadEmpresa(){
+  try{
+    const {data} = await sb.from('empresa_config').select('*').eq('id',1).maybeSingle();
+    state.empresa = data || null;
+  }catch(e){ state.empresa = null; }
+}
+
+async function loadPerfilYTrabajador(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if(!user){ state.perfil=null; state.trabajador=null; return; }
+  const { data:perfil } = await sb.from('perfiles').select('rol, trabajador_id').eq('id', user.id).maybeSingle();
+  state.perfil = perfil || null;
+  if(perfil && perfil.trabajador_id){
+    const { data:trab } = await sb.from('trabajadores').select('id, numero_empleado, nombre').eq('id', perfil.trabajador_id).maybeSingle();
+    state.trabajador = trab || null;
+  } else {
+    state.trabajador = null;
+  }
+}
+
+async function bootstrap(){
+  await loadEmpresa();
+  const { data:{ session } } = await sb.auth.getSession();
+  state.session = session;
+  if(session){ await loadPerfilYTrabajador(); }
+  state.ready = true;
+  render();
+}
+
+sb.auth.onAuthStateChange(async (event, session) => {
+  state.session = session;
+  if(session){
+    await loadPerfilYTrabajador();
+  } else {
+    state.perfil = null; state.trabajador = null;
+    state.loginStep='numero'; state.loginMode='trabajador'; state.loginNumero=''; state.loginError='';
+  }
+  render();
+});
+
+async function logout(){
+  await sb.auth.signOut();
+  state.tab='nuevo';
+}
+
+/* ============================================================
+   RENDER ROOT
+   ============================================================ */
+function render(){
+  const app = document.getElementById('app');
+  if(!state.ready){ app.innerHTML = '<div class="center-loading"><div class="spinner"></div></div>'; return; }
+  if(!state.session){ app.innerHTML = renderLogin(); bindLoginEvents(); return; }
+  if(!state.perfil){ app.innerHTML = '<div class="center-loading"><div class="spinner"></div></div>'; return; }
+  app.innerHTML = renderShell();
+  bindShellEvents();
+}
+
+/* ============================================================
+   LOGIN VIEW
+   ============================================================ */
+function renderLogin(){
+  const empresa = state.empresa;
+  const logo = empresa && empresa.logo_url ? `<img src="${esc(empresa.logo_url)}" alt="logo">` : '';
+  const nombreEmpresa = empresa ? esc(empresa.nombre) : '';
+
+  let body = '';
+  if(state.loginMode==='trabajador'){
+    if(state.loginStep==='numero'){
+      body = `
+        <div class="field">
+          <label>Número de empleado</label>
+          <input id="in-numero" type="text" inputmode="numeric" placeholder="Ej. 12" value="${esc(state.loginNumero)}" autofocus>
+        </div>
+        ${state.loginError?`<div class="error-box">${esc(state.loginError)}</div>`:''}
+        <button class="btn btn-primary" id="btn-continuar" ${state.loginLoading?'disabled':''}>${state.loginLoading?'Comprobando…':'Continuar'}</button>
+        <div class="login-alt"><button id="btn-modo-admin">Acceso administrador</button></div>
+      `;
+    } else if(state.loginStep==='crear'){
+      body = `
+        <div class="info-box">Hola ${esc(state.loginNombrePreview)}, es tu primer acceso. Crea una contraseña para registrar tus mantenimientos.</div>
+        <div class="field"><label>Nueva contraseña</label><input id="in-pass1" type="password" placeholder="Mínimo 6 caracteres" autofocus></div>
+        <div class="field"><label>Repite la contraseña</label><input id="in-pass2" type="password"></div>
+        ${state.loginError?`<div class="error-box">${esc(state.loginError)}</div>`:''}
+        <button class="btn btn-amber" id="btn-crear" ${state.loginLoading?'disabled':''}>${state.loginLoading?'Creando acceso…':'Crear acceso y entrar'}</button>
+        <div class="login-alt"><button id="btn-volver">Volver</button></div>
+      `;
+    } else if(state.loginStep==='password'){
+      body = `
+        <div class="field"><label>Contraseña</label><input id="in-pass" type="password" autofocus></div>
+        ${state.loginError?`<div class="error-box">${esc(state.loginError)}</div>`:''}
+        <button class="btn btn-primary" id="btn-entrar" ${state.loginLoading?'disabled':''}>${state.loginLoading?'Entrando…':'Entrar'}</button>
+        <div class="hint">¿Olvidaste tu contraseña? Pide a un administrador que restablezca tu acceso.</div>
+        <div class="login-alt"><button id="btn-volver">Volver</button></div>
+      `;
+    }
+  } else {
+    body = `
+      <div class="field"><label>Email</label><input id="in-email" type="email" autofocus></div>
+      <div class="field"><label>Contraseña</label><input id="in-adminpass" type="password"></div>
+      ${state.loginError?`<div class="error-box">${esc(state.loginError)}</div>`:''}
+      <button class="btn btn-primary" id="btn-admin-entrar" ${state.loginLoading?'disabled':''}>${state.loginLoading?'Entrando…':'Entrar'}</button>
+      <div class="login-alt"><button id="btn-modo-trabajador">Soy operario, volver</button></div>
+    `;
+  }
+
+  return `
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-brand">
+          ${logo}
+          ${nombreEmpresa?`<div class="empresa">${nombreEmpresa}</div>`:''}
+          <h1>Mantenimiento</h1>
+          <span class="sub">Registro de intervenciones</span>
+        </div>
+        ${body}
+      </div>
+    </div>
+  `;
+}
+
+function bindLoginEvents(){
+  const $ = id => document.getElementById(id);
+  if(state.loginMode==='trabajador' && state.loginStep==='numero'){
+    $('btn-modo-admin').onclick = ()=>{ state.loginMode='admin'; state.loginError=''; render(); };
+    $('btn-continuar').onclick = onContinuarNumero;
+    $('in-numero').addEventListener('keydown', e=>{ if(e.key==='Enter') onContinuarNumero(); });
+    $('in-numero').oninput = e=> state.loginNumero = e.target.value;
+  } else if(state.loginMode==='trabajador' && state.loginStep==='crear'){
+    $('btn-volver').onclick = ()=>{ state.loginStep='numero'; state.loginError=''; render(); };
+    $('btn-crear').onclick = onCrearPassword;
+  } else if(state.loginMode==='trabajador' && state.loginStep==='password'){
+    $('btn-volver').onclick = ()=>{ state.loginStep='numero'; state.loginError=''; render(); };
+    $('btn-entrar').onclick = onEntrarPassword;
+    $('in-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') onEntrarPassword(); });
+  } else if(state.loginMode==='admin'){
+    $('btn-modo-trabajador').onclick = ()=>{ state.loginMode='trabajador'; state.loginStep='numero'; state.loginError=''; render(); };
+    $('btn-admin-entrar').onclick = onAdminEntrar;
+  }
+}
+
+async function onContinuarNumero(){
+  const numero = (document.getElementById('in-numero').value || '').trim();
+  if(!numero){ state.loginError='Introduce tu número de empleado.'; render(); return; }
+  state.loginNumero = numero;
+  state.loginLoading = true; state.loginError=''; render();
+  try{
+    const { data, error } = await sb.rpc('trabajador_estado', { p_numero_empleado: numero });
+    state.loginLoading = false;
+    if(error){ state.loginError = 'No se pudo comprobar el número de empleado.'; render(); return; }
+    if(!data || !data.existe){ state.loginError = 'Número de empleado no encontrado o inactivo.'; render(); return; }
+    state.loginNombrePreview = data.nombre || '';
+    if(data.tiene_password){ state.loginStep='password'; } else { state.loginStep='crear'; }
+    render();
+  }catch(e){
+    state.loginLoading=false; state.loginError='Error de conexión. Inténtalo de nuevo.'; render();
+  }
+}
+
+async function onCrearPassword(){
+  const p1 = document.getElementById('in-pass1').value;
+  const p2 = document.getElementById('in-pass2').value;
+  if(!p1 || p1.length<6){ state.loginError='La contraseña debe tener al menos 6 caracteres.'; render(); return; }
+  if(p1!==p2){ state.loginError='Las contraseñas no coinciden.'; render(); return; }
+  state.loginLoading=true; state.loginError=''; render();
+  const email = `empleado-${state.loginNumero}@epistock.local`;
+  try{
+    const { data:signUpData, error:signUpErr } = await sb.auth.signUp({ email, password:p1 });
+    if(signUpErr){ state.loginLoading=false; state.loginError = signUpErr.message.includes('already') ? 'Ya existe una cuenta para este número de empleado.' : signUpErr.message; render(); return; }
+    const { error:vincErr } = await sb.rpc('vincular_trabajador', { p_numero_empleado: state.loginNumero });
+    if(vincErr){ state.loginLoading=false; state.loginError = 'No se pudo vincular tu cuenta: '+vincErr.message; render(); return; }
+    if(!signUpData.session){
+      const { error:signInErr } = await sb.auth.signInWithPassword({ email, password:p1 });
+      if(signInErr){ state.loginLoading=false; state.loginError = signInErr.message; render(); return; }
+    }
+    state.loginLoading=false;
+  }catch(e){
+    state.loginLoading=false; state.loginError='Error de conexión. Inténtalo de nuevo.'; render();
+  }
+}
+
+async function onEntrarPassword(){
+  const pass = document.getElementById('in-pass').value;
+  if(!pass){ state.loginError='Introduce tu contraseña.'; render(); return; }
+  state.loginLoading=true; state.loginError=''; render();
+  const email = `empleado-${state.loginNumero}@epistock.local`;
+  const { error } = await sb.auth.signInWithPassword({ email, password:pass });
+  state.loginLoading=false;
+  if(error){ state.loginError='Contraseña incorrecta.'; render(); return; }
+}
+
+async function onAdminEntrar(){
+  const email = (document.getElementById('in-email').value||'').trim();
+  const pass = document.getElementById('in-adminpass').value;
+  if(!email || !pass){ state.loginError='Introduce email y contraseña.'; render(); return; }
+  state.loginLoading=true; state.loginError=''; render();
+  const { error } = await sb.auth.signInWithPassword({ email, password:pass });
+  state.loginLoading=false;
+  if(error){ state.loginError='Credenciales incorrectas.'; render(); return; }
+}
+
+/* ============================================================
+   SHELL
+   ============================================================ */
+function availableTabs(){
+  const tabs = [];
+  if(state.trabajador){ tabs.push(['nuevo','Nuevo registro'], ['mis','Mis registros']); }
+  if(state.perfil.rol==='admin'){ tabs.push(['historial','Historial'], ['catalogo','Catálogo'], ['accesos','Accesos']); }
+  return tabs;
+}
+
+function renderShell(){
+  const empresa = state.empresa;
+  const logo = empresa && empresa.logo_url ? `<img src="${esc(empresa.logo_url)}" alt="logo">` : '';
+  const nombreEmpresa = empresa ? esc(empresa.nombre) : '';
+  const who = state.trabajador ? `${esc(state.trabajador.nombre)} · Nº ${esc(state.trabajador.numero_empleado)}` : (state.perfil.rol==='admin' ? 'Administrador' : '');
+  const tabs = availableTabs();
+  if(!tabs.find(t=>t[0]===state.tab)) state.tab = tabs.length? tabs[0][0] : 'nuevo';
+
+  return `
+    <header class="topbar">
+      <div class="topbar-left">
+        ${logo}
+        <div class="topbar-titles">
+          <div class="app-name">Mantenimiento</div>
+          ${nombreEmpresa?`<div class="empresa-name">${nombreEmpresa}</div>`:''}
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="user-chip"><span class="dot"></span>${esc(who)}</div>
+        <button class="logout-btn" id="btn-logout">Salir</button>
+      </div>
+    </header>
+    <nav class="tabs">
+      ${tabs.map(([key,label])=>`<button data-tab="${key}" class="${state.tab===key?'active':''}">${label}</button>`).join('')}
+    </nav>
+    <main class="content" id="tab-content">
+      <div class="spinner"></div>
+    </main>
+  `;
+}
+
+function bindShellEvents(){
+  document.getElementById('btn-logout').onclick = logout;
+  document.querySelectorAll('nav.tabs button').forEach(btn=>{
+    btn.onclick = ()=>{ state.tab = btn.dataset.tab; renderTab(); };
+  });
+  renderTab();
+}
+
+function renderTab(){
+  document.querySelectorAll('nav.tabs button').forEach(b=> b.classList.toggle('active', b.dataset.tab===state.tab));
+  const map = { nuevo:renderTabNuevo, mis:renderTabMisRegistros, historial:renderTabHistorial, catalogo:renderTabCatalogo, accesos:renderTabAccesos };
+  (map[state.tab] || renderTabNuevo)();
+}
+
+/* ============================================================
+   TAB: NUEVO REGISTRO (wizard)
+   ============================================================ */
+async function renderTabNuevo(){
+  const el = document.getElementById('tab-content');
+  if(!state.wizard){
+    state.wizard = { lineas:null, lineaId:null, tipo:null, elementosData:null, selected:new Map(), tareaIndex:{}, observaciones:'' };
+  }
+  const w = state.wizard;
+  if(w.lineas===null){
+    el.innerHTML = '<div class="spinner"></div>';
+    const { data } = await sb.from('mant_lineas').select('*').eq('activo',true).order('codigo');
+    w.lineas = data || [];
+  }
+  drawWizard();
+}
+
+function drawWizard(){
+  const el = document.getElementById('tab-content');
+  const w = state.wizard;
+  let html = '<div class="card"><h2>Nuevo registro de mantenimiento</h2>';
+
+  html += '<div class="section-title">Línea</div><div class="chip-row" id="wiz-lineas">';
+  html += w.lineas.map(l=>`<button class="chip-btn ${w.lineaId===l.id?'selected':''}" data-linea="${l.id}">${esc(l.codigo)}${l.nombre && l.nombre!==l.codigo ? ' · '+esc(l.nombre):''}</button>`).join('');
+  html += '</div>';
+
+  if(w.lineaId){
+    html += '<div class="section-title" style="margin-top:18px;">Tipo de mantenimiento</div>';
+    html += `<div class="tipo-row">
+      <button class="tipo-btn preventivo ${w.tipo==='preventivo'?'selected':''}" data-tipo="preventivo">🔧 Preventivo</button>
+      <button class="tipo-btn correctivo ${w.tipo==='correctivo'?'selected':''}" data-tipo="correctivo">⚠️ Correctivo</button>
+    </div>`;
+  }
+
+  if(w.lineaId && w.elementosData===null){
+    html += '<div class="spinner"></div>';
+  } else if(w.lineaId && w.elementosData){
+    html += '<div class="section-title" style="margin-top:18px;">Elemento(s) y tarea(s) realizadas</div>';
+    if(w.elementosData.length===0){
+      html += '<div class="empty-state">Esta línea no tiene elementos de mantenimiento configurados todavía. Añádelos desde Catálogo.</div>';
+    }
+    w.elementosData.forEach(ed=>{
+      html += `<div class="elemento-block"><div class="elemento-head">${esc(ed.elemento.nombre)}</div><div class="elemento-body">`;
+      html += renderTareaNodes(ed.roots, w);
+      html += '</div></div>';
+    });
+  }
+
+  if(w.selected.size>0){
+    html += '<div class="section-title" style="margin-top:18px;">Seleccionado</div><div class="selected-summary">';
+    for(const [tid, info] of w.selected){
+      html += `<span class="sel-chip">${esc(info.tarea_nombre)}<button data-remove="${tid}">✕</button></span>`;
+    }
+    html += '</div>';
+  }
+
+  html += '<div class="section-title" style="margin-top:18px;">Observaciones (opcional)</div>';
+  html += `<textarea id="wiz-obs" placeholder="Notas adicionales...">${esc(w.observaciones)}</textarea>`;
+
+  const canSave = w.lineaId && w.tipo && w.selected.size>0;
+  html += `<div style="margin-top:18px;"><button class="btn btn-amber" id="btn-guardar" ${canSave?'':'disabled'}>Guardar registro</button></div>`;
+  html += '</div>';
+
+  el.innerHTML = html;
+  bindWizardEvents();
+}
+
+function renderTareaNodes(nodes, w){
+  let html = '';
+  nodes.forEach(n=>{
+    if(n.children && n.children.length){
+      html += `<div class="tarea-group-label">${esc(n.nombre)}</div><div class="tarea-children">`;
+      html += renderTareaNodes(n.children, w);
+      html += '</div>';
+    } else {
+      const checked = w.selected.has(n.id);
+      html += `<label class="tarea-check"><input type="checkbox" data-tarea="${n.id}" ${checked?'checked':''}>
+        <div><div class="label">${esc(n.nombre)}</div>${n.referencia||n.ubicacion?`<div class="meta">${n.referencia?'Ref: '+esc(n.referencia):''}${n.ubicacion?' · '+esc(n.ubicacion):''}</div>`:''}</div>
+      </label>`;
+    }
+  });
+  return html;
+}
+
+function bindWizardEvents(){
+  const w = state.wizard;
+  document.querySelectorAll('#wiz-lineas .chip-btn').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.linea;
+      if(w.lineaId===id) return;
+      w.lineaId = id; w.elementosData=null; w.selected=new Map();
+      drawWizard();
+      await loadElementosParaLinea(id);
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('.tipo-btn').forEach(btn=>{
+    btn.onclick = ()=>{ w.tipo = btn.dataset.tipo; drawWizard(); };
+  });
+  document.querySelectorAll('.tarea-check input').forEach(cb=>{
+    cb.onchange = ()=>{
+      const tid = cb.dataset.tarea;
+      if(cb.checked){ w.selected.set(tid, w.tareaIndex[tid]); }
+      else { w.selected.delete(tid); }
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.onclick = ()=>{ w.selected.delete(btn.dataset.remove); drawWizard(); };
+  });
+  const obs = document.getElementById('wiz-obs');
+  if(obs) obs.oninput = e=> w.observaciones = e.target.value;
+  const btnGuardar = document.getElementById('btn-guardar');
+  if(btnGuardar) btnGuardar.onclick = guardarRegistro;
+}
+
+async function loadElementosParaLinea(lineaId){
+  const w = state.wizard;
+  const { data:linkRows } = await sb.from('mant_linea_elementos').select('elemento_id, mant_elementos(id,nombre,activo)').eq('linea_id', lineaId);
+  const elementos = (linkRows||[]).map(r=>r.mant_elementos).filter(e=>e && e.activo);
+  w.tareaIndex = {};
+  const elementosData = [];
+  for(const elemento of elementos){
+    const { data:tareas } = await sb.from('mant_tareas').select('*').eq('elemento_id', elemento.id).eq('activo', true).order('orden');
+    const tree = buildTareaTree(tareas||[], elemento.nombre, w.tareaIndex);
+    elementosData.push({ elemento, roots: tree });
+  }
+  w.elementosData = elementosData;
+}
+
+function buildTareaTree(tareas, elementoNombre, tareaIndex){
+  const byId = {};
+  tareas.forEach(t=> byId[t.id] = Object.assign({}, t, {children:[]}));
+  const roots = [];
+  tareas.forEach(t=>{
+    if(t.parent_id && byId[t.parent_id]){ byId[t.parent_id].children.push(byId[t.id]); }
+    else { roots.push(byId[t.id]); }
+  });
+  function walk(node, pathParts){
+    const path = pathParts.concat([node.nombre]);
+    if(node.children.length===0){
+      tareaIndex[node.id] = {
+        elemento_nombre: elementoNombre,
+        tarea_nombre: path.join(' › '),
+        tarea_id: node.id,
+        referencia: node.referencia || null,
+        ubicacion: node.ubicacion || null,
+        foto_url: node.foto_url || null,
+      };
+    } else {
+      node.children.forEach(c=> walk(c, path));
+    }
+  }
+  roots.forEach(r=> walk(r, []));
+  return roots;
+}
+
+async function guardarRegistro(){
+  const w = state.wizard;
+  const linea = w.lineas.find(l=>l.id===w.lineaId);
+  const items = Array.from(w.selected.values());
+  const btn = document.getElementById('btn-guardar');
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  try{
+    const { data:registro, error:regErr } = await sb.from('mant_registros').insert({
+      trabajador_id: state.trabajador.id,
+      numero_empleado: state.trabajador.numero_empleado,
+      trabajador_nombre: state.trabajador.nombre,
+      linea_id: w.lineaId,
+      linea_codigo: linea ? linea.codigo : null,
+      tipo: w.tipo,
+      observaciones: w.observaciones || null,
+    }).select().single();
+    if(regErr) throw regErr;
+
+    const itemRows = items.map(it=>({
+      registro_id: registro.id,
+      tarea_id: it.tarea_id,
+      elemento_nombre: it.elemento_nombre,
+      tarea_nombre: it.tarea_nombre,
+      referencia: it.referencia,
+      ubicacion: it.ubicacion,
+      foto_url: it.foto_url,
+    }));
+    const { error:itemsErr } = await sb.from('mant_registro_items').insert(itemRows);
+    if(itemsErr) throw itemsErr;
+
+    toast('Registro guardado correctamente', 'success');
+    state.wizard = { lineas:w.lineas, lineaId:null, tipo:null, elementosData:null, selected:new Map(), tareaIndex:{}, observaciones:'' };
+    state.misRegistros = null;
+    drawWizard();
+  }catch(e){
+    toast('Error al guardar: '+e.message, 'error');
+    btn.disabled=false; btn.textContent='Guardar registro';
+  }
+}
+
+/* ============================================================
+   TAB: MIS REGISTROS
+   ============================================================ */
+async function renderTabMisRegistros(){
+  const el = document.getElementById('tab-content');
+  el.innerHTML = '<div class="spinner"></div>';
+  const { data, error } = await sb.from('mant_registros').select('*, mant_registro_items(*)').eq('trabajador_id', state.trabajador.id).order('ts',{ascending:false}).limit(200);
+  if(error){ el.innerHTML = '<div class="card"><div class="error-box">No se pudieron cargar tus registros.</div></div>'; return; }
+  state.misRegistros = data;
+  el.innerHTML = renderRegistrosList(data, false);
+}
+
+function renderRegistrosList(rows, showWorker){
+  if(!rows || rows.length===0) return '<div class="card"><div class="empty-state">Todavía no hay registros.</div></div>';
+  return rows.map(r=>{
+    const items = r.mant_registro_items || [];
+    return `<div class="registro-card">
+      <div class="registro-top">
+        <div>
+          <div class="registro-linea">${esc(r.linea_codigo||'')}</div>
+          ${showWorker?`<div class="worker-line">${esc(r.trabajador_nombre||'')} · Nº ${esc(r.numero_empleado||'')}</div>`:''}
+        </div>
+        <div style="text-align:right;">
+          <span class="badge ${r.tipo}">${esc(r.tipo)}</span>
+          <div class="registro-fecha">${fmtFechaHora(r.ts)}</div>
+        </div>
+      </div>
+      ${items.map(it=>`<div class="item-row">
+        ${it.foto_url?`<img src="${esc(it.foto_url)}">`:'<div class="imgph"></div>'}
+        <div class="item-text"><b>${esc(it.tarea_nombre)}</b> <span class="mini">(${esc(it.elemento_nombre)})</span>
+          ${it.referencia||it.ubicacion?`<div class="mini">${it.referencia?'Ref: '+esc(it.referencia):''}${it.ubicacion?' · '+esc(it.ubicacion):''}</div>`:''}
+        </div>
+      </div>`).join('')}
+      ${r.observaciones?`<div class="obs-line">"${esc(r.observaciones)}"</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+/* ============================================================
+   TAB: HISTORIAL (admin)
+   ============================================================ */
+async function renderTabHistorial(){
+  const el = document.getElementById('tab-content');
+  el.innerHTML = '<div class="spinner"></div>';
+  if(!state.historial){
+    const [{data:regs}, {data:lineas}] = await Promise.all([
+      sb.from('mant_registros').select('*, mant_registro_items(*)').order('ts',{ascending:false}).limit(1000),
+      sb.from('mant_lineas').select('*').order('codigo'),
+    ]);
+    state.historial = { all: regs||[], lineas: lineas||[] };
+  }
+  drawHistorial();
+}
+
+function drawHistorial(){
+  const el = document.getElementById('tab-content');
+  const h = state.historial;
+  const f = state.historialFiltros;
+  const rows = h.all.filter(r=>{
+    if(f.linea && r.linea_codigo!==f.linea) return false;
+    if(f.tipo && r.tipo!==f.tipo) return false;
+    if(f.trabajador && !(r.trabajador_nombre||'').toLowerCase().includes(f.trabajador.toLowerCase())) return false;
+    if(f.desde && r.ts < f.desde) return false;
+    if(f.hasta && r.ts > f.hasta+'T23:59:59') return false;
+    return true;
+  });
+
+  let html = '<div class="card">';
+  html += '<div class="toolbar"><h2 style="margin:0;">Historial de mantenimientos</h2><button class="btn btn-outline btn-sm" id="btn-export">⬇ Exportar CSV</button></div>';
+  html += `<div class="filters-row">
+    <select id="f-linea"><option value="">Todas las líneas</option>${h.lineas.map(l=>`<option value="${esc(l.codigo)}" ${f.linea===l.codigo?'selected':''}>${esc(l.codigo)}</option>`).join('')}</select>
+    <select id="f-tipo"><option value="">Todos los tipos</option><option value="preventivo" ${f.tipo==='preventivo'?'selected':''}>Preventivo</option><option value="correctivo" ${f.tipo==='correctivo'?'selected':''}>Correctivo</option></select>
+    <input id="f-trab" type="text" placeholder="Buscar operario…" value="${esc(f.trabajador)}">
+    <input id="f-desde" type="date" value="${esc(f.desde)}">
+    <input id="f-hasta" type="date" value="${esc(f.hasta)}">
+  </div>`;
+  html += `<div class="hint" style="margin-bottom:10px;">${rows.length} registro(s)</div>`;
+  html += '</div>';
+  html += renderRegistrosList(rows, true);
+
+  el.innerHTML = html;
+  document.getElementById('f-linea').onchange = e=>{ f.linea=e.target.value; drawHistorial(); };
+  document.getElementById('f-tipo').onchange = e=>{ f.tipo=e.target.value; drawHistorial(); };
+  document.getElementById('f-trab').oninput = e=>{ f.trabajador=e.target.value; drawHistorial(); };
+  document.getElementById('f-desde').onchange = e=>{ f.desde=e.target.value; drawHistorial(); };
+  document.getElementById('f-hasta').onchange = e=>{ f.hasta=e.target.value; drawHistorial(); };
+  document.getElementById('btn-export').onclick = ()=> exportCSV(rows);
+}
+
+function exportCSV(rows){
+  const lines = [['Fecha','Hora','Linea','Tipo','Operario','Nº empleado','Elemento','Tarea','Referencia','Ubicacion','Observaciones'].join(';')];
+  rows.forEach(r=>{
+    const d = new Date(r.ts);
+    const fecha = d.toLocaleDateString('es-ES',{timeZone:'Europe/Madrid'});
+    const hora = d.toLocaleTimeString('es-ES',{timeZone:'Europe/Madrid'});
+    const items = (r.mant_registro_items && r.mant_registro_items.length) ? r.mant_registro_items : [{}];
+    items.forEach(it=>{
+      lines.push([fecha,hora,r.linea_codigo||'',r.tipo,r.trabajador_nombre||'',r.numero_empleado||'',it.elemento_nombre||'',it.tarea_nombre||'',it.referencia||'',it.ubicacion||'',r.observaciones||''].map(csvEsc).join(';'));
+    });
+  });
+  const csv = '﻿'+lines.join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'mantenimientos_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function csvEsc(v){ v = String(v==null?'':v); return '"'+v.replace(/"/g,'""')+'"'; }
+
+/* ============================================================
+   TAB: CATÁLOGO (admin)
+   ============================================================ */
+async function renderTabCatalogo(){
+  const el = document.getElementById('tab-content');
+  el.innerHTML = '<div class="spinner"></div>';
+  await ensureCatalogoLoaded();
+  drawCatalogo();
+}
+
+async function ensureCatalogoLoaded(){
+  const c = state.catalogo;
+  if(c.lineas===null){
+    const { data } = await sb.from('mant_lineas').select('*').order('codigo');
+    c.lineas = data||[];
+  }
+  if(c.elementos===null){
+    const { data } = await sb.from('mant_elementos').select('*').order('nombre');
+    c.elementos = data||[];
+  }
+  if(c.lineaElementos===null){
+    const { data } = await sb.from('mant_linea_elementos').select('*');
+    c.lineaElementos = data||[];
+  }
+}
+
+function drawCatalogo(){
+  const el = document.getElementById('tab-content');
+  const c = state.catalogo;
+  const catLabels = {lineas:'Líneas', elementos:'Elementos', tareas:'Árbol de tareas'};
+  let html = '<div class="subtabs">';
+  html += Object.keys(catLabels).map(k=>`<button data-ctab="${k}" class="${state.catalogoTab===k?'active':''}">${catLabels[k]}</button>`).join('');
+  html += '</div>';
+  if(state.catalogoTab==='lineas') html += drawCatLineas();
+  else if(state.catalogoTab==='elementos') html += drawCatElementos();
+  else html += drawCatTareas();
+  el.innerHTML = html;
+  bindCatalogoEvents();
+}
+
+function drawCatLineas(){
+  const c = state.catalogo;
+  let html = '<div class="card"><h2>Líneas</h2><table class="admin-table"><thead><tr><th>Código</th><th>Nombre</th><th>Estado</th><th></th></tr></thead><tbody>';
+  c.lineas.forEach(l=>{
+    html += `<tr><td><b>${esc(l.codigo)}</b></td><td>${esc(l.nombre||'')}</td><td><span class="pill ${l.activo?'on':'off'}">${l.activo?'Activa':'Inactiva'}</span></td>
+    <td><button class="icon-btn" data-toggle-linea="${l.id}" title="${l.activo?'Desactivar':'Activar'}">${l.activo?'⏸':'▶'}</button></td></tr>`;
+  });
+  html += '</tbody></table>';
+  html += `<div class="inline-form">
+    <div class="field"><label>Código</label><input id="nl-codigo" placeholder="Ej. TE002"></div>
+    <div class="field"><label>Nombre (opcional)</label><input id="nl-nombre" placeholder="Descripción"></div>
+    <button class="btn btn-primary btn-sm" id="btn-add-linea">+ Añadir línea</button>
+  </div></div>`;
+  return html;
+}
+
+function drawCatElementos(){
+  const c = state.catalogo;
+  let html = '<div class="card"><h2>Elementos</h2><table class="admin-table"><thead><tr><th>Elemento</th><th>Estado</th><th>Líneas asignadas</th><th></th></tr></thead><tbody>';
+  c.elementos.forEach(elemento=>{
+    const lineasAsignadas = c.lineaElementos.filter(le=>le.elemento_id===elemento.id).map(le=> c.lineas.find(l=>l.id===le.linea_id)).filter(Boolean);
+    html += `<tr><td><b>${esc(elemento.nombre)}</b></td><td><span class="pill ${elemento.activo?'on':'off'}">${elemento.activo?'Activo':'Inactivo'}</span></td>
+      <td>${lineasAsignadas.map(l=>esc(l.codigo)).join(', ')||'<span class="hint">ninguna</span>'}</td>
+      <td><button class="icon-btn" data-manage-elemento="${elemento.id}">⚙</button></td></tr>`;
+  });
+  html += '</tbody></table>';
+  html += `<div class="inline-form">
+    <div class="field"><label>Nuevo elemento</label><input id="ne-nombre" placeholder="Ej. Motor principal"></div>
+    <button class="btn btn-primary btn-sm" id="btn-add-elemento">+ Añadir elemento</button>
+  </div>`;
+
+  if(c.elementoSel){
+    const elemento = c.elementos.find(e=>e.id===c.elementoSel);
+    if(elemento){
+      html += `<div class="task-edit-box"><h3>Asignar "${esc(elemento.nombre)}" a líneas</h3><div class="chip-row">`;
+      c.lineas.forEach(l=>{
+        const asignado = c.lineaElementos.some(le=>le.elemento_id===elemento.id && le.linea_id===l.id);
+        html += `<button class="chip-btn ${asignado?'selected':''}" data-toggle-asig="${l.id}">${esc(l.codigo)}</button>`;
+      });
+      html += '</div></div>';
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
+function drawCatTareas(){
+  const c = state.catalogo;
+  let html = '<div class="card"><h2>Árbol de tareas</h2>';
+  html += '<div class="field"><label>Elemento</label><select id="ct-elemento">';
+  html += '<option value="">Selecciona un elemento…</option>';
+  c.elementos.forEach(e=> html += `<option value="${e.id}" ${c.elementoSel===e.id?'selected':''}>${esc(e.nombre)}</option>`);
+  html += '</select></div>';
+
+  if(c.elementoSel){
+    const tareas = c.tareasPorElemento[c.elementoSel];
+    if(!tareas){
+      html += '<div class="spinner"></div>';
+    } else {
+      const tree = buildTareaTreeAdmin(tareas);
+      html += `<div id="tarea-tree">${renderAdminTareaNodes(tree)}</div>`;
+      html += `<div class="inline-form">
+        <div class="field"><label>Nueva tarea raíz</label><input id="nt-nombre" placeholder="Ej. Limpiar"></div>
+        <button class="btn btn-outline btn-sm" id="btn-add-tarea-root">+ Añadir tarea</button>
+      </div>`;
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
+function buildTareaTreeAdmin(tareas){
+  const byId = {};
+  tareas.forEach(t=> byId[t.id]=Object.assign({}, t, {children:[]}));
+  const roots=[];
+  tareas.forEach(t=>{ if(t.parent_id && byId[t.parent_id]) byId[t.parent_id].children.push(byId[t.id]); else roots.push(byId[t.id]); });
+  const sortRec = arr => { arr.sort((a,b)=>(a.orden||0)-(b.orden||0)); arr.forEach(n=>sortRec(n.children)); };
+  sortRec(roots);
+  return roots;
+}
+
+function renderAdminTareaNodes(nodes){
+  const c = state.catalogo;
+  let html = '';
+  nodes.forEach(n=>{
+    const editing = c.editingTareaId===n.id;
+    html += `<div class="tree-node">
+      <div class="tree-row">
+        <span class="name">${esc(n.nombre)}${!n.activo?' <span class="pill off">inactiva</span>':''}</span>
+        ${n.referencia?`<span class="meta">Ref: ${esc(n.referencia)}</span>`:''}
+        ${n.foto_url?`<img class="thumb-preview" src="${esc(n.foto_url)}">`:''}
+        <button class="icon-btn" data-edit-tarea="${n.id}" title="Editar">✎</button>
+        <button class="icon-btn" data-add-sub="${n.id}" title="Añadir subtarea">+</button>
+      </div>
+      ${editing ? renderTareaEditBox(n) : ''}
+      ${c.addingSubTo===n.id ? renderAddSubBox(n.id) : ''}
+      ${n.children.length ? `<div class="tree-children">${renderAdminTareaNodes(n.children)}</div>` : ''}
+    </div>`;
+  });
+  return html;
+}
+
+function renderTareaEditBox(n){
+  return `<div class="task-edit-box">
+    <div class="row">
+      <input id="et-nombre" value="${esc(n.nombre)}" placeholder="Nombre">
+      <input id="et-referencia" value="${esc(n.referencia||'')}" placeholder="Referencia">
+      <input id="et-ubicacion" value="${esc(n.ubicacion||'')}" placeholder="Ubicación">
+    </div>
+    <div class="row" style="align-items:center;">
+      <input id="et-foto" type="file" accept="image/*">
+      ${n.foto_url?`<img class="thumb-preview" src="${esc(n.foto_url)}">`:''}
+    </div>
+    <div class="row">
+      <button class="btn btn-primary btn-sm" data-save-tarea="${n.id}">Guardar</button>
+      <button class="btn btn-outline btn-sm" data-cancel-edit="1">Cancelar</button>
+      <button class="btn btn-danger btn-sm" data-toggle-tarea="${n.id}" style="margin-left:auto;">${n.activo?'Desactivar':'Activar'}</button>
+    </div>
+  </div>`;
+}
+function renderAddSubBox(parentId){
+  return `<div class="task-edit-box">
+    <div class="row"><input id="as-nombre" placeholder="Nombre de la subtarea"></div>
+    <div class="row">
+      <button class="btn btn-primary btn-sm" data-save-sub="${parentId}">Añadir</button>
+      <button class="btn btn-outline btn-sm" data-cancel-sub="1">Cancelar</button>
+    </div>
+  </div>`;
+}
+
+function bindCatalogoEvents(){
+  const c = state.catalogo;
+  document.querySelectorAll('[data-ctab]').forEach(b=>{
+    b.onclick = ()=>{ state.catalogoTab = b.dataset.ctab; c.elementoSel=null; c.editingTareaId=null; c.addingSubTo=null; drawCatalogo(); };
+  });
+
+  const btnAddLinea = document.getElementById('btn-add-linea');
+  if(btnAddLinea) btnAddLinea.onclick = async ()=>{
+    const codigo = document.getElementById('nl-codigo').value.trim();
+    const nombre = document.getElementById('nl-nombre').value.trim();
+    if(!codigo){ toast('Introduce un código de línea','error'); return; }
+    const { error } = await sb.from('mant_lineas').insert({ codigo, nombre: nombre||null });
+    if(error){ toast('Error: '+error.message,'error'); return; }
+    c.lineas = null; state.wizard=null;
+    await ensureCatalogoLoaded(); drawCatalogo();
+    toast('Línea añadida','success');
+  };
+  document.querySelectorAll('[data-toggle-linea]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.toggleLinea;
+      const l = c.lineas.find(x=>x.id===id);
+      const { error } = await sb.from('mant_lineas').update({ activo: !l.activo }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      l.activo = !l.activo; state.wizard=null; drawCatalogo();
+    };
+  });
+
+  const btnAddElemento = document.getElementById('btn-add-elemento');
+  if(btnAddElemento) btnAddElemento.onclick = async ()=>{
+    const nombre = document.getElementById('ne-nombre').value.trim();
+    if(!nombre){ toast('Introduce un nombre','error'); return; }
+    const { error } = await sb.from('mant_elementos').insert({ nombre });
+    if(error){ toast('Error: '+error.message,'error'); return; }
+    c.elementos=null; await ensureCatalogoLoaded(); drawCatalogo();
+    toast('Elemento añadido','success');
+  };
+  document.querySelectorAll('[data-manage-elemento]').forEach(b=>{
+    b.onclick = ()=>{ c.elementoSel = (c.elementoSel===b.dataset.manageElemento)? null : b.dataset.manageElemento; drawCatalogo(); };
+  });
+  document.querySelectorAll('[data-toggle-asig]').forEach(b=>{
+    b.onclick = async ()=>{
+      const lineaId = b.dataset.toggleAsig;
+      const elementoId = c.elementoSel;
+      const existing = c.lineaElementos.find(le=>le.elemento_id===elementoId && le.linea_id===lineaId);
+      if(existing){
+        await sb.from('mant_linea_elementos').delete().eq('elemento_id', elementoId).eq('linea_id', lineaId);
+        c.lineaElementos = c.lineaElementos.filter(le=>!(le.elemento_id===elementoId && le.linea_id===lineaId));
+      } else {
+        await sb.from('mant_linea_elementos').insert({ elemento_id: elementoId, linea_id: lineaId });
+        c.lineaElementos.push({elemento_id:elementoId, linea_id:lineaId});
+      }
+      state.wizard=null;
+      drawCatalogo();
+    };
+  });
+
+  const ctElemento = document.getElementById('ct-elemento');
+  if(ctElemento) ctElemento.onchange = async ()=>{
+    c.elementoSel = ctElemento.value || null;
+    c.editingTareaId=null; c.addingSubTo=null;
+    if(c.elementoSel && !c.tareasPorElemento[c.elementoSel]){
+      drawCatalogo();
+      const { data } = await sb.from('mant_tareas').select('*').eq('elemento_id', c.elementoSel).order('orden');
+      c.tareasPorElemento[c.elementoSel] = data||[];
+    }
+    drawCatalogo();
+  };
+  const btnAddTareaRoot = document.getElementById('btn-add-tarea-root');
+  if(btnAddTareaRoot) btnAddTareaRoot.onclick = async ()=>{
+    const nombre = document.getElementById('nt-nombre').value.trim();
+    if(!nombre){ toast('Introduce un nombre','error'); return; }
+    const { error } = await sb.from('mant_tareas').insert({ elemento_id: c.elementoSel, nombre, parent_id:null, orden: (c.tareasPorElemento[c.elementoSel]||[]).length });
+    if(error){ toast('Error: '+error.message,'error'); return; }
+    await recargarTareas(c.elementoSel);
+    toast('Tarea añadida','success');
+  };
+  document.querySelectorAll('[data-edit-tarea]').forEach(b=>{
+    b.onclick = ()=>{ c.editingTareaId = (c.editingTareaId===b.dataset.editTarea)?null:b.dataset.editTarea; c.addingSubTo=null; drawCatalogo(); };
+  });
+  document.querySelectorAll('[data-cancel-edit]').forEach(b=>{ b.onclick = ()=>{ c.editingTareaId=null; drawCatalogo(); }; });
+  document.querySelectorAll('[data-add-sub]').forEach(b=>{
+    b.onclick = ()=>{ c.addingSubTo = (c.addingSubTo===b.dataset.addSub)?null:b.dataset.addSub; c.editingTareaId=null; drawCatalogo(); };
+  });
+  document.querySelectorAll('[data-cancel-sub]').forEach(b=>{ b.onclick = ()=>{ c.addingSubTo=null; drawCatalogo(); }; });
+
+  document.querySelectorAll('[data-save-sub]').forEach(b=>{
+    b.onclick = async ()=>{
+      const parentId = b.dataset.saveSub;
+      const nombre = document.getElementById('as-nombre').value.trim();
+      if(!nombre){ toast('Introduce un nombre','error'); return; }
+      const { error } = await sb.from('mant_tareas').insert({ elemento_id: c.elementoSel, parent_id: parentId, nombre, orden: 0 });
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      c.addingSubTo=null;
+      await recargarTareas(c.elementoSel);
+      toast('Subtarea añadida','success');
+    };
+  });
+
+  document.querySelectorAll('[data-save-tarea]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.saveTarea;
+      const nombre = document.getElementById('et-nombre').value.trim();
+      const referencia = document.getElementById('et-referencia').value.trim();
+      const ubicacion = document.getElementById('et-ubicacion').value.trim();
+      const fileInput = document.getElementById('et-foto');
+      let foto_url;
+      if(fileInput.files && fileInput.files[0]){
+        b.disabled = true; b.textContent='Subiendo foto…';
+        const file = fileInput.files[0];
+        const ext = (file.name.split('.').pop()||'jpg');
+        const path = 'componentes/'+id+'-'+Date.now()+'.'+ext;
+        const { error:upErr } = await sb.storage.from('mant-fotos').upload(path, file, { upsert:true });
+        if(upErr){ toast('Error subiendo foto: '+upErr.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
+        const { data:pub } = sb.storage.from('mant-fotos').getPublicUrl(path);
+        foto_url = pub.publicUrl;
+      }
+      const payload = { nombre, referencia: referencia||null, ubicacion: ubicacion||null };
+      if(foto_url) payload.foto_url = foto_url;
+      const { error } = await sb.from('mant_tareas').update(payload).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      c.editingTareaId=null;
+      await recargarTareas(c.elementoSel);
+      toast('Tarea actualizada','success');
+    };
+  });
+  document.querySelectorAll('[data-toggle-tarea]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.toggleTarea;
+      const tareas = c.tareasPorElemento[c.elementoSel];
+      const t = tareas.find(x=>x.id===id);
+      const { error } = await sb.from('mant_tareas').update({ activo: !t.activo }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      c.editingTareaId=null;
+      await recargarTareas(c.elementoSel);
+    };
+  });
+}
+
+async function recargarTareas(elementoId){
+  const { data } = await sb.from('mant_tareas').select('*').eq('elemento_id', elementoId).order('orden');
+  state.catalogo.tareasPorElemento[elementoId] = data||[];
+  drawCatalogo();
+}
+
+/* ============================================================
+   TAB: ACCESOS (admin)
+   ============================================================ */
+async function renderTabAccesos(){
+  const el = document.getElementById('tab-content');
+  el.innerHTML = '<div class="spinner"></div>';
+  const { data, error } = await sb.from('trabajadores').select('*').order('numero_empleado');
+  if(error){ el.innerHTML = '<div class="card"><div class="error-box">No se pudo cargar la lista de trabajadores.</div></div>'; return; }
+  state.accesos = data||[];
+  drawAccesos();
+}
+
+function drawAccesos(){
+  const el = document.getElementById('tab-content');
+  const rows = state.accesos;
+  let html = '<div class="card"><h2>Accesos de trabajadores</h2>';
+  html += '<div class="hint" style="margin-bottom:12px;">Cada trabajador crea su propia contraseña la primera vez que entra con su número de empleado. Si alguien la olvida, puedes restablecer su acceso aquí para que pueda crear una contraseña nueva.</div>';
+  html += '<table class="admin-table"><thead><tr><th>Nº</th><th>Nombre</th><th>Estado</th><th>Acceso</th><th></th></tr></thead><tbody>';
+  rows.forEach(t=>{
+    const tieneAcceso = !!t.auth_user_id;
+    html += `<tr><td>${esc(t.numero_empleado)}</td><td>${esc(t.nombre)}</td>
+      <td><span class="pill ${t.activo?'on':'off'}">${t.activo?'Activo':'Inactivo'}</span></td>
+      <td><span class="pill ${tieneAcceso?'on':'off'}">${tieneAcceso?'Configurado':'Pendiente'}</span></td>
+      <td>${tieneAcceso?`<button class="btn btn-outline btn-sm" data-reset="${t.id}">Restablecer</button>`:''}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+  document.querySelectorAll('[data-reset]').forEach(b=>{
+    b.onclick = async ()=>{
+      if(!confirm('¿Restablecer el acceso de este trabajador? Tendrá que crear una contraseña nueva en su próximo inicio de sesión.')) return;
+      const id = b.dataset.reset;
+      const { error } = await sb.rpc('admin_resetear_trabajador', { p_trabajador_id: id });
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      toast('Acceso restablecido','success');
+      state.accesos=null; renderTabAccesos();
+    };
+  });
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+bootstrap();
+</script>
+</body>
+</html>
