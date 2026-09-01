@@ -177,9 +177,34 @@
     display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--steel-200);border-radius:10px;
     padding:10px 12px;text-align:left;width:100%;
   }
-  .nivel-card.branch{justify-content:space-between;font-weight:700;color:var(--steel-800);font-size:14px;}
+  .nivel-card.branch{padding:4px;gap:4px;}
   .nivel-card.branch:hover{border-color:var(--steel-400);}
-  .nivel-card.branch .chevron{color:var(--steel-400);font-size:18px;}
+  .nivel-card .chevron{color:var(--steel-400);font-size:18px;}
+  .nivel-card-inner{flex:1;background:none;border:none;display:flex;align-items:center;justify-content:space-between;padding:8px 8px;font-weight:700;color:var(--steel-800);font-size:14px;text-align:left;border-radius:7px;}
+  .nivel-card-inner:hover{background:var(--steel-50);}
+  .pdf-btn{display:inline-flex;align-items:center;gap:4px;background:var(--steel-100);color:var(--steel-700);font-size:12px;font-weight:700;padding:8px 10px;border-radius:8px;text-decoration:none;flex-shrink:0;white-space:nowrap;}
+  .pdf-btn:hover{background:var(--steel-200);}
+  .stock-badge{display:inline-block;margin-top:3px;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:#f0fdf4;color:var(--green);}
+  .stock-badge.low{background:var(--amber-50);color:var(--amber-dark);}
+  .stock-badge.zero{background:var(--red-50);color:var(--red);}
+
+  /* ---------- Selector de tipo de mantenimiento ---------- */
+  .wiz-subheader{margin-bottom:2px;}
+  .btn-back{background:none;border:none;color:var(--amber-dark);font-weight:700;font-size:12.5px;padding:0;}
+  .tipo-mant-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+  .tipo-mant-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:18px 10px;border-radius:12px;border:1.5px solid var(--steel-200);background:#fff;font-weight:700;font-size:13px;color:var(--steel-700);text-align:center;}
+  .tipo-mant-card:hover{border-color:var(--steel-400);}
+  .tipo-mant-icon{font-size:28px;}
+  .tipo-mant-label{line-height:1.25;}
+
+  /* ---------- Checklist extintores ---------- */
+  .checklist{display:flex;flex-direction:column;gap:8px;}
+  .checklist-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--steel-200);border-radius:9px;background:#fff;}
+  .checklist-q{font-size:13.5px;color:var(--steel-900);flex:1;}
+  .checklist-toggle{display:flex;gap:6px;flex-shrink:0;}
+  .chk-btn{padding:6px 12px;border-radius:7px;border:1.5px solid var(--steel-200);background:#fff;font-size:12.5px;font-weight:700;color:var(--steel-600);}
+  .chk-btn.si.active{border-color:var(--green);background:#f0fdf4;color:var(--green);}
+  .chk-btn.no.active{border-color:var(--red);background:var(--red-50);color:var(--red);}
   .nivel-card.leaf{cursor:pointer;}
   .nivel-card.leaf:hover{border-color:var(--steel-400);}
   .nivel-card.leaf.selected{border-color:var(--amber);background:var(--amber-50);}
@@ -276,6 +301,33 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* ============================================================
+   TIPOS DE MANTENIMIENTO
+   ============================================================ */
+const TIPOS_MANTENIMIENTO = [
+  {code:'lineas_fabricacion', label:'Líneas de Fabricación', icon:'⚙️'},
+  {code:'carretillas', label:'Carretillas y Transpaletas', icon:'🚜'},
+  {code:'extintores', label:'Extintores', icon:'🧯'},
+  {code:'compresores', label:'Compresores', icon:'💨'},
+  {code:'gas_quemadores', label:'Instalaciones de Gas y Quemadores', icon:'🔥'},
+  {code:'informatico', label:'Mantenimiento Informático', icon:'💻'},
+  {code:'residuos', label:'Recogida de Residuos', icon:'♻️'},
+  {code:'otros', label:'Otros Mantenimientos', icon:'🧰'},
+];
+const SUBTIPOS = {
+  informatico: [{code:'erp',label:'ERP'},{code:'soporte',label:'Soporte Informático'}],
+  residuos: [{code:'gestion_residuos',label:'Gestión de Residuos'},{code:'chatarra',label:'Chatarra'},{code:'otros',label:'Otros'}],
+};
+function tipoMantLabel(code){
+  const t = TIPOS_MANTENIMIENTO.find(x=>x.code===code);
+  return t ? t.label : code;
+}
+function subtipoLabelFor(tipo, subtipo){
+  const map = SUBTIPOS[tipo] || [];
+  const found = map.find(s=>s.code===subtipo);
+  return found ? found.label : subtipo;
+}
+
+/* ============================================================
    STATE
    ============================================================ */
 const state = {
@@ -294,10 +346,17 @@ const state = {
   wizard:null,
   misRegistros:null,
   historial:null,
-  historialFiltros:{linea:'', tipo:'', trabajador:'', desde:'', hasta:''},
+  historialFiltros:{tipoMant:'', trabajador:'', desde:'', hasta:''},
   catalogoTab:'lineas',
-  catalogo:{lineas:null, elementos:null, lineaElementos:null, tareasPorElemento:{}, elementoSel:null, editingTareaId:null, addingSubTo:null},
+  catalogo:{
+    lineas:null, elementos:null, lineaElementos:null, tareasPorElemento:{}, elementoSel:null, editingTareaId:null, addingSubTo:null,
+    vehiculos:null, vehiculoElementos:null, vehiculoSel:null,
+    extintores:null, checklist:null,
+    stockItems:null,
+  },
   accesos:null,
+  accesosPermisos:null,
+  accesosExpanded:null,
 };
 
 /* ============================================================
@@ -582,19 +641,40 @@ function renderTab(){
   (map[state.tab] || renderTabNuevo)();
 }
 
+
 /* ============================================================
    TAB: NUEVO REGISTRO (wizard)
    ============================================================ */
+function newWizardState(){
+  return {
+    permisos:null, tipoMant:null,
+    ambito:null, ambitos:null, ambitoId:null,
+    tipoRep:null, elementos:null, elementoId:null, treeCache:{}, navStack:[], selected:new Map(), observaciones:'',
+    carretillaModo:null,
+    extintores:null, extintorId:null, extintorModo:null, checklist:null, respuestas:{},
+    simpleSubtipo:null, simpleTitulo:'', simpleDescripcion:'', simpleEmpresa:'',
+  };
+}
+
+function resetWizardFlow(w){
+  const permisos = w.permisos;
+  Object.assign(w, newWizardState());
+  w.permisos = permisos;
+}
+
+function resetArbolSelection(w){
+  w.ambitoId=null; w.tipoRep=null; w.elementos=null; w.elementoId=null; w.treeCache={}; w.navStack=[];
+  w.selected=new Map(); w.observaciones=''; w.carretillaModo=null;
+}
+
 async function renderTabNuevo(){
   const el = document.getElementById('tab-content');
-  if(!state.wizard){
-    state.wizard = { lineas:null, lineaId:null, tipo:null, elementos:null, elementoId:null, treeCache:{}, navStack:[], selected:new Map(), observaciones:'' };
-  }
+  if(!state.wizard){ state.wizard = newWizardState(); }
   const w = state.wizard;
-  if(w.lineas===null){
+  if(w.permisos===null){
     el.innerHTML = '<div class="spinner"></div>';
-    const { data } = await sb.from('mant_lineas').select('*').eq('activo',true).order('codigo');
-    w.lineas = data || [];
+    const { data } = await sb.from('mant_tipos_permisos').select('tipo').eq('trabajador_id', state.trabajador.id);
+    w.permisos = (data||[]).map(r=>r.tipo);
   }
   drawWizard();
 }
@@ -602,168 +682,78 @@ async function renderTabNuevo(){
 function drawWizard(){
   const el = document.getElementById('tab-content');
   const w = state.wizard;
-  let html = '<div class="card"><h2>Nuevo registro de mantenimiento</h2>';
-
-  html += '<div class="section-title">1. Línea</div><div class="chip-row" id="wiz-lineas">';
-  html += w.lineas.map(l=>`<button class="chip-btn ${w.lineaId===l.id?'selected':''}" data-linea="${l.id}">${esc(l.codigo)}${l.nombre && l.nombre!==l.codigo ? ' · '+esc(l.nombre):''}</button>`).join('');
-  html += '</div>';
-
-  if(w.lineaId){
-    html += '<div class="section-title" style="margin-top:18px;">2. Tipo de mantenimiento</div>';
-    html += `<div class="tipo-row">
-      <button class="tipo-btn preventivo ${w.tipo==='preventivo'?'selected':''}" data-tipo="preventivo">🔧 Preventivo</button>
-      <button class="tipo-btn correctivo ${w.tipo==='correctivo'?'selected':''}" data-tipo="correctivo">⚠️ Correctivo</button>
-    </div>`;
-  }
-
-  if(w.lineaId && w.tipo){
-    html += '<div class="section-title" style="margin-top:18px;">3. Elemento a reparar</div>';
-    if(w.elementos===null){
-      html += '<div class="spinner"></div>';
-    } else if(w.elementos.length===0){
-      html += '<div class="empty-state">Esta línea no tiene elementos de mantenimiento configurados todavía. Añádelos desde Catálogo.</div>';
-    } else {
-      html += '<div class="elemento-grid" id="wiz-elementos">';
-      html += w.elementos.map(e=>{
-        const n = countSelectedForElemento(e.id);
-        return `<button class="elemento-card ${w.elementoId===e.id?'active':''}" data-elemento="${e.id}">
-          <span class="elemento-card-name">${esc(e.nombre)}</span>
-          ${n>0?`<span class="elemento-card-badge">${n}</span>`:''}
-        </button>`;
-      }).join('');
-      html += '</div>';
-
-      if(w.elementoId){
-        const cache = w.treeCache[w.elementoId];
-        if(!cache){
-          html += '<div class="spinner"></div>';
-        } else {
-          const elemento = w.elementos.find(e=>e.id===w.elementoId);
-          html += renderNivelBrowser(w, cache, elemento ? elemento.nombre : '');
-        }
-      }
-    }
-  }
-
-  if(w.selected.size>0){
-    html += '<div class="section-title" style="margin-top:18px;">Seleccionado para este registro</div><div class="selected-summary">';
-    for(const [tid, info] of w.selected){
-      html += `<span class="sel-chip">${esc(info.tarea_nombre)}<button data-remove="${tid}">✕</button></span>`;
-    }
-    html += '</div>';
-  }
-
-  html += '<div class="section-title" style="margin-top:18px;">Observaciones (opcional)</div>';
-  html += `<textarea id="wiz-obs" placeholder="Notas adicionales...">${esc(w.observaciones)}</textarea>`;
-
-  const canSave = w.lineaId && w.tipo && w.selected.size>0;
-  html += `<div style="margin-top:18px;"><button class="btn btn-amber" id="btn-guardar" ${canSave?'':'disabled'}>Guardar registro</button></div>`;
-  html += '</div>';
-
-  el.innerHTML = html;
-  bindWizardEvents();
+  if(!w.tipoMant){ el.innerHTML = drawTipoSelector(w); bindTipoSelectorEvents(); return; }
+  if(w.tipoMant==='lineas_fabricacion'){ el.innerHTML = drawArbolFlow(w); bindArbolFlowEvents(); }
+  else if(w.tipoMant==='carretillas'){ el.innerHTML = drawCarretillasFlow(w); bindCarretillasFlowEvents(); }
+  else if(w.tipoMant==='extintores'){ el.innerHTML = drawExtintoresFlow(w); bindExtintoresEvents(); }
+  else { el.innerHTML = drawSimpleFlow(w); bindSimpleFlowEvents(); }
 }
 
-function countSelectedForElemento(elementoId){
-  let n = 0;
-  for(const info of state.wizard.selected.values()){ if(info.elemento_id===elementoId) n++; }
-  return n;
+function wizardBackHeader(titulo){
+  return `<div class="wiz-subheader"><button class="btn-back" id="btn-back-tipo">‹ Cambiar tipo de mantenimiento</button></div><h2 style="margin-top:2px;">${esc(titulo)}</h2>`;
+}
+function bindBackHeader(w){
+  const b = document.getElementById('btn-back-tipo');
+  if(b) b.onclick = ()=>{ resetWizardFlow(w); drawWizard(); };
 }
 
-function renderNivelBrowser(w, cache, elementoNombre){
-  const currentParent = w.navStack.length ? cache.byId[w.navStack[w.navStack.length-1]] : null;
-  const currentNodes = currentParent ? currentParent.children : cache.roots;
-
-  let html = '<div class="nivel-browser">';
-  html += `<div class="breadcrumb"><button data-crumb="-1">${esc(elementoNombre)}</button>`;
-  w.navStack.forEach((id,idx)=>{
-    const node = cache.byId[id];
-    html += `<span class="crumb-sep">›</span><button data-crumb="${idx}">${esc(node?node.nombre:'')}</button>`;
-  });
-  html += '</div>';
-
-  if(currentNodes.length===0){
-    html += '<div class="empty-state">No hay tareas configuradas aquí todavía. Añádelas desde Catálogo.</div>';
+/* ---------- Selector de tipo ---------- */
+function drawTipoSelector(w){
+  const permitidos = TIPOS_MANTENIMIENTO.filter(t=> w.permisos.includes(t.code));
+  let html = '<div class="card"><h2>¿Qué tipo de mantenimiento vas a registrar?</h2>';
+  if(permitidos.length===0){
+    html += '<div class="empty-state">No tienes ningún tipo de mantenimiento asignado. Pide a un administrador que te dé acceso desde la pestaña Accesos.</div>';
   } else {
-    html += '<div class="nivel-list">';
-    currentNodes.forEach(n=>{
-      const isBranch = n.children && n.children.length>0;
-      if(isBranch){
-        html += `<button class="nivel-card branch" data-drill="${n.id}"><span class="nivel-card-name">${esc(n.nombre)}</span><span class="chevron">›</span></button>`;
-      } else {
-        const checked = w.selected.has(n.id);
-        html += `<label class="nivel-card leaf ${checked?'selected':''}">
-          <input type="checkbox" data-tarea="${n.id}" ${checked?'checked':''}>
-          ${n.foto_url?`<img class="nivel-photo" src="${esc(n.foto_url)}">`:'<div class="nivel-photo ph">🔧</div>'}
-          <div class="nivel-info">
-            <div class="nivel-card-name">${esc(n.nombre)}</div>
-            ${n.referencia?`<div class="nivel-meta">Ref: ${esc(n.referencia)}</div>`:''}
-            ${n.ubicacion?`<div class="nivel-meta">📍 ${esc(n.ubicacion)}</div>`:''}
-          </div>
-        </label>`;
-      }
-    });
+    html += '<div class="tipo-mant-grid">';
+    html += permitidos.map(t=>`<button class="tipo-mant-card" data-tipomant="${t.code}"><span class="tipo-mant-icon">${t.icon}</span><span class="tipo-mant-label">${esc(t.label)}</span></button>`).join('');
     html += '</div>';
   }
   html += '</div>';
   return html;
 }
 
-function bindWizardEvents(){
+function bindTipoSelectorEvents(){
   const w = state.wizard;
-  document.querySelectorAll('#wiz-lineas .chip-btn').forEach(btn=>{
+  document.querySelectorAll('[data-tipomant]').forEach(btn=>{
     btn.onclick = async ()=>{
-      const id = btn.dataset.linea;
-      if(w.lineaId===id) return;
-      w.lineaId = id; w.tipo=null; w.elementos=null; w.elementoId=null; w.navStack=[]; w.selected=new Map(); w.treeCache={};
-      drawWizard();
-      await loadElementosList(id);
-      drawWizard();
+      const code = btn.dataset.tipomant;
+      const permisos = w.permisos;
+      Object.assign(w, newWizardState());
+      w.permisos = permisos;
+      w.tipoMant = code;
+      if(code==='lineas_fabricacion'){
+        w.ambito='linea'; drawWizard();
+        await loadAmbitos('linea'); drawWizard();
+      } else if(code==='carretillas'){
+        w.ambito='vehiculo'; drawWizard();
+        await loadAmbitos('vehiculo'); drawWizard();
+      } else if(code==='extintores'){
+        drawWizard();
+        await loadExtintoresList(); drawWizard();
+      } else {
+        drawWizard();
+      }
     };
   });
-  document.querySelectorAll('.tipo-btn').forEach(btn=>{
-    btn.onclick = ()=>{ w.tipo = btn.dataset.tipo; drawWizard(); };
-  });
-  document.querySelectorAll('#wiz-elementos .elemento-card').forEach(btn=>{
-    btn.onclick = async ()=>{
-      const id = btn.dataset.elemento;
-      w.elementoId = id; w.navStack=[];
-      drawWizard();
-      await ensureElementoTree(id);
-      drawWizard();
-    };
-  });
-  document.querySelectorAll('[data-crumb]').forEach(btn=>{
-    btn.onclick = ()=>{
-      const idx = parseInt(btn.dataset.crumb,10);
-      w.navStack = idx<0 ? [] : w.navStack.slice(0, idx+1);
-      drawWizard();
-    };
-  });
-  document.querySelectorAll('[data-drill]').forEach(btn=>{
-    btn.onclick = ()=>{ w.navStack.push(btn.dataset.drill); drawWizard(); };
-  });
-  document.querySelectorAll('.nivel-card.leaf input').forEach(cb=>{
-    cb.onchange = ()=>{
-      const tid = cb.dataset.tarea;
-      const cache = w.treeCache[w.elementoId];
-      if(cb.checked){ w.selected.set(tid, cache.tareaIndex[tid]); }
-      else { w.selected.delete(tid); }
-      drawWizard();
-    };
-  });
-  document.querySelectorAll('[data-remove]').forEach(btn=>{
-    btn.onclick = ()=>{ w.selected.delete(btn.dataset.remove); drawWizard(); };
-  });
-  const obs = document.getElementById('wiz-obs');
-  if(obs) obs.oninput = e=> w.observaciones = e.target.value;
-  const btnGuardar = document.getElementById('btn-guardar');
-  if(btnGuardar) btnGuardar.onclick = guardarRegistro;
 }
 
-async function loadElementosList(lineaId){
+/* ---------- Flujo árbol: línea o vehículo → tipo de reparación → elemento → tarea/repuesto ---------- */
+async function loadAmbitos(ambito){
   const w = state.wizard;
-  const { data:linkRows } = await sb.from('mant_linea_elementos').select('elemento_id, mant_elementos(id,nombre,activo)').eq('linea_id', lineaId);
+  if(ambito==='linea'){
+    const { data } = await sb.from('mant_lineas').select('*').eq('activo',true).order('codigo');
+    w.ambitos = (data||[]).map(l=>({id:l.id, label:l.codigo + (l.nombre && l.nombre!==l.codigo ? ' · '+l.nombre : '')}));
+  } else {
+    const { data } = await sb.from('mant_vehiculos').select('*').eq('activo',true).order('nombre');
+    w.ambitos = (data||[]).map(v=>({id:v.id, label:v.nombre + (v.modelo? ' · '+v.modelo : '')}));
+  }
+}
+
+async function loadElementosParaAmbito(ambito, ambitoId){
+  const w = state.wizard;
+  const table = ambito==='linea' ? 'mant_linea_elementos' : 'mant_vehiculo_elementos';
+  const fkCol = ambito==='linea' ? 'linea_id' : 'vehiculo_id';
+  const { data:linkRows } = await sb.from(table).select('elemento_id, mant_elementos(id,nombre,activo)').eq(fkCol, ambitoId);
   w.elementos = (linkRows||[]).map(r=>r.mant_elementos).filter(e=>e && e.activo);
 }
 
@@ -804,44 +794,582 @@ function buildTareaTree(tareas, elemento){
   return { roots, byId, tareaIndex };
 }
 
-async function guardarRegistro(){
+function countSelectedForElemento(elementoId){
+  let n = 0;
+  for(const info of state.wizard.selected.values()){ if(info.elemento_id===elementoId) n++; }
+  return n;
+}
+
+function drawAmbitoChips(w, label){
+  if(w.ambitos===null){ return `<div class="section-title">${esc(label)}</div><div class="spinner"></div>`; }
+  let html = `<div class="section-title">${esc(label)}</div><div class="chip-row" id="wiz-ambitos">`;
+  html += w.ambitos.map(a=>`<button class="chip-btn ${w.ambitoId===a.id?'selected':''}" data-ambito="${a.id}">${esc(a.label)}</button>`).join('');
+  html += '</div>';
+  return html;
+}
+
+function drawTipoRepYElemento(w){
+  let html = '';
+  html += '<div class="section-title" style="margin-top:18px;">Tipo de reparación</div>';
+  html += `<div class="tipo-row">
+    <button class="tipo-btn preventivo ${w.tipoRep==='preventivo'?'selected':''}" data-tiporep="preventivo">🔧 Preventivo</button>
+    <button class="tipo-btn correctivo ${w.tipoRep==='correctivo'?'selected':''}" data-tiporep="correctivo">⚠️ Correctivo</button>
+  </div>`;
+
+  if(w.tipoRep){
+    html += '<div class="section-title" style="margin-top:18px;">Elemento a reparar</div>';
+    if(w.elementos===null){ html += '<div class="spinner"></div>'; }
+    else if(w.elementos.length===0){ html += '<div class="empty-state">Todavía no hay elementos configurados aquí. Añádelos desde Catálogo.</div>'; }
+    else {
+      html += '<div class="elemento-grid" id="wiz-elementos">';
+      html += w.elementos.map(e=>{
+        const n = countSelectedForElemento(e.id);
+        return `<button class="elemento-card ${w.elementoId===e.id?'active':''}" data-elemento="${e.id}"><span class="elemento-card-name">${esc(e.nombre)}</span>${n>0?`<span class="elemento-card-badge">${n}</span>`:''}</button>`;
+      }).join('');
+      html += '</div>';
+      if(w.elementoId){
+        const cache = w.treeCache[w.elementoId];
+        if(!cache){ html += '<div class="spinner"></div>'; }
+        else { const elemento=w.elementos.find(e=>e.id===w.elementoId); html += renderNivelBrowser(w, cache, elemento?elemento.nombre:''); }
+      }
+    }
+  }
+
+  if(w.selected.size>0){
+    html += '<div class="section-title" style="margin-top:18px;">Seleccionado para este registro</div><div class="selected-summary">';
+    for(const [tid, info] of w.selected){ html += `<span class="sel-chip">${esc(info.tarea_nombre)}<button data-remove="${tid}">✕</button></span>`; }
+    html += '</div>';
+  }
+
+  html += '<div class="section-title" style="margin-top:18px;">Observaciones (opcional)</div>';
+  html += `<textarea id="wiz-obs" placeholder="Notas adicionales...">${esc(w.observaciones)}</textarea>`;
+
+  const canSave = w.tipoRep && w.selected.size>0;
+  html += `<div style="margin-top:18px;"><button class="btn btn-amber" id="btn-guardar-arbol" ${canSave?'':'disabled'}>Guardar registro</button></div>`;
+  return html;
+}
+
+function renderNivelBrowser(w, cache, elementoNombre){
+  const currentParent = w.navStack.length ? cache.byId[w.navStack[w.navStack.length-1]] : null;
+  const currentNodes = currentParent ? currentParent.children : cache.roots;
+
+  let html = '<div class="nivel-browser">';
+  html += `<div class="breadcrumb"><button data-crumb="-1">${esc(elementoNombre)}</button>`;
+  w.navStack.forEach((id,idx)=>{
+    const node = cache.byId[id];
+    html += `<span class="crumb-sep">›</span><button data-crumb="${idx}">${esc(node?node.nombre:'')}</button>`;
+  });
+  html += '</div>';
+
+  if(currentNodes.length===0){
+    html += '<div class="empty-state">No hay tareas configuradas aquí todavía. Añádelas desde Catálogo.</div>';
+  } else {
+    html += '<div class="nivel-list">';
+    currentNodes.forEach(n=>{
+      const isBranch = n.children && n.children.length>0;
+      if(isBranch){
+        html += `<div class="nivel-card branch">
+          <button class="nivel-card-inner" data-drill="${n.id}"><span class="nivel-card-name">${esc(n.nombre)}</span><span class="chevron">›</span></button>
+          ${n.pdf_url?`<a class="pdf-btn" href="${esc(n.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Ver instrucciones / plano">📄 PDF</a>`:''}
+        </div>`;
+      } else {
+        const checked = w.selected.has(n.id);
+        const stockBadge = (n.stock!==null && n.stock!==undefined) ? `<span class="stock-badge ${n.stock<=0?'zero':n.stock<=2?'low':''}">Stock: ${n.stock}</span>` : '';
+        html += `<label class="nivel-card leaf ${checked?'selected':''}">
+          <input type="checkbox" data-tarea="${n.id}" ${checked?'checked':''}>
+          ${n.foto_url?`<img class="nivel-photo" src="${esc(n.foto_url)}">`:'<div class="nivel-photo ph">🔧</div>'}
+          <div class="nivel-info">
+            <div class="nivel-card-name">${esc(n.nombre)}</div>
+            ${n.referencia?`<div class="nivel-meta">Ref: ${esc(n.referencia)}</div>`:''}
+            ${n.ubicacion?`<div class="nivel-meta">📍 ${esc(n.ubicacion)}</div>`:''}
+            ${stockBadge}
+          </div>
+        </label>`;
+      }
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function bindTipoRepYElementoEvents(w){
+  document.querySelectorAll('.tipo-btn[data-tiporep]').forEach(btn=>{
+    btn.onclick = ()=>{ w.tipoRep = btn.dataset.tiporep; drawWizard(); };
+  });
+  document.querySelectorAll('#wiz-elementos .elemento-card').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.elemento;
+      w.elementoId=id; w.navStack=[];
+      drawWizard();
+      await ensureElementoTree(id);
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('[data-crumb]').forEach(btn=>{
+    btn.onclick = ()=>{ const idx=parseInt(btn.dataset.crumb,10); w.navStack = idx<0?[]:w.navStack.slice(0,idx+1); drawWizard(); };
+  });
+  document.querySelectorAll('[data-drill]').forEach(btn=>{
+    btn.onclick = ()=>{ w.navStack.push(btn.dataset.drill); drawWizard(); };
+  });
+  document.querySelectorAll('.nivel-card.leaf input').forEach(cb=>{
+    cb.onchange = ()=>{
+      const tid=cb.dataset.tarea; const cache=w.treeCache[w.elementoId];
+      if(cb.checked){ w.selected.set(tid, cache.tareaIndex[tid]); } else { w.selected.delete(tid); }
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('[data-remove]').forEach(btn=>{ btn.onclick=()=>{ w.selected.delete(btn.dataset.remove); drawWizard(); }; });
+  const obs=document.getElementById('wiz-obs'); if(obs) obs.oninput = e=> w.observaciones=e.target.value;
+  const btnG = document.getElementById('btn-guardar-arbol'); if(btnG) btnG.onclick = guardarRegistroArbol;
+}
+
+function drawArbolFlow(w){
+  let html = '<div class="card">';
+  html += wizardBackHeader('Líneas de Fabricación');
+  html += drawAmbitoChips(w, 'Línea');
+  if(w.ambitoId) html += drawTipoRepYElemento(w);
+  html += '</div>';
+  return html;
+}
+
+function bindArbolFlowEvents(){
   const w = state.wizard;
-  const linea = w.lineas.find(l=>l.id===w.lineaId);
-  const items = Array.from(w.selected.values());
-  const btn = document.getElementById('btn-guardar');
+  bindBackHeader(w);
+  document.querySelectorAll('#wiz-ambitos .chip-btn').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.ambito;
+      if(w.ambitoId===id) return;
+      w.ambitoId=id; w.tipoRep=null; w.elementos=null; w.elementoId=null; w.navStack=[]; w.selected=new Map(); w.treeCache={};
+      drawWizard();
+      await loadElementosParaAmbito('linea', id);
+      drawWizard();
+    };
+  });
+  if(w.ambitoId) bindTipoRepYElementoEvents(w);
+}
+
+async function guardarRegistroArbol(){
+  const w = state.wizard;
+  const btn = document.getElementById('btn-guardar-arbol');
   btn.disabled = true; btn.textContent = 'Guardando…';
+  const ambitoObj = (w.ambitos||[]).find(a=>a.id===w.ambitoId);
+  const items = Array.from(w.selected.values()).map(it=>({
+    tarea_id: it.tarea_id, elemento_nombre: it.elemento_nombre, tarea_nombre: it.tarea_nombre,
+    referencia: it.referencia, ubicacion: it.ubicacion, foto_url: it.foto_url,
+  }));
   try{
-    const { data:registro, error:regErr } = await sb.from('mant_registros').insert({
-      trabajador_id: state.trabajador.id,
-      numero_empleado: state.trabajador.numero_empleado,
-      trabajador_nombre: state.trabajador.nombre,
-      linea_id: w.lineaId,
-      linea_codigo: linea ? linea.codigo : null,
-      tipo: w.tipo,
-      observaciones: w.observaciones || null,
-    }).select().single();
-    if(regErr) throw regErr;
-
-    const itemRows = items.map(it=>({
-      registro_id: registro.id,
-      tarea_id: it.tarea_id,
-      elemento_nombre: it.elemento_nombre,
-      tarea_nombre: it.tarea_nombre,
-      referencia: it.referencia,
-      ubicacion: it.ubicacion,
-      foto_url: it.foto_url,
-    }));
-    const { error:itemsErr } = await sb.from('mant_registro_items').insert(itemRows);
-    if(itemsErr) throw itemsErr;
-
+    const { error } = await sb.rpc('registrar_mantenimiento_linea_vehiculo', {
+      p_ambito: w.ambito,
+      p_ambito_id: w.ambitoId,
+      p_ambito_nombre: ambitoObj ? ambitoObj.label : null,
+      p_tipo: w.tipoRep,
+      p_observaciones: w.observaciones || null,
+      p_items: items,
+    });
+    if(error) throw error;
     toast('Registro guardado correctamente', 'success');
-    state.wizard = { lineas:w.lineas, lineaId:null, tipo:null, elementos:null, elementoId:null, treeCache:{}, navStack:[], selected:new Map(), observaciones:'' };
-    state.misRegistros = null;
+    state.misRegistros = null; state.historial = null;
+    resetArbolSelection(w);
     drawWizard();
   }catch(e){
     toast('Error al guardar: '+e.message, 'error');
     btn.disabled=false; btn.textContent='Guardar registro';
   }
+}
+
+/* ---------- Carretillas y Transpaletas ---------- */
+function drawCarretillasFlow(w){
+  let html = '<div class="card">';
+  html += wizardBackHeader('Carretillas y Transpaletas');
+  html += drawAmbitoChips(w, 'Vehículo');
+  if(w.ambitos && w.ambitos.length===0){
+    html += '<div class="empty-state">Todavía no hay vehículos dados de alta. Añádelos desde Catálogo.</div></div>';
+    return html;
+  }
+  if(w.ambitoId){
+    html += '<div class="section-title" style="margin-top:18px;">Tipo de mantenimiento</div>';
+    html += `<div class="tipo-row">
+      <button class="tipo-btn preventivo ${w.carretillaModo==='interno'?'selected':''}" data-modo="interno">🔧 Interno</button>
+      <button class="tipo-btn correctivo ${w.carretillaModo==='externo'?'selected':''}" data-modo="externo">🏭 Externo (empresa externa)</button>
+    </div>`;
+  }
+  if(w.ambitoId && w.carretillaModo==='interno'){
+    html += drawTipoRepYElemento(w);
+  } else if(w.ambitoId && w.carretillaModo==='externo'){
+    html += drawSimpleForm(w);
+  }
+  html += '</div>';
+  return html;
+}
+
+function bindCarretillasFlowEvents(){
+  const w = state.wizard;
+  bindBackHeader(w);
+  document.querySelectorAll('#wiz-ambitos .chip-btn').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.ambito;
+      if(w.ambitoId===id) return;
+      w.ambitoId=id; w.carretillaModo=null; w.tipoRep=null; w.elementos=null; w.elementoId=null; w.navStack=[]; w.selected=new Map(); w.treeCache={};
+      w.simpleDescripcion=''; w.simpleEmpresa='';
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('.tipo-btn[data-modo]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      w.carretillaModo = btn.dataset.modo;
+      if(w.carretillaModo==='interno' && w.elementos===null){
+        drawWizard();
+        await loadElementosParaAmbito('vehiculo', w.ambitoId);
+        drawWizard();
+      } else {
+        drawWizard();
+      }
+    };
+  });
+  if(w.carretillaModo==='interno'){ bindTipoRepYElementoEvents(w); }
+  else if(w.carretillaModo==='externo'){ bindSimpleFormEvents(w, saveCarretillaExterno); }
+}
+
+async function saveCarretillaExterno(){
+  const w = state.wizard;
+  const btn = document.getElementById('btn-guardar-simple');
+  const fileInput = document.getElementById('sf-pdf');
+  if(!w.simpleDescripcion || !w.simpleDescripcion.trim()){ toast('Escribe una descripción','error'); return; }
+  btn.disabled=true; btn.textContent='Guardando…';
+  try{
+    let pdf_url=null;
+    if(fileInput && fileInput.files && fileInput.files[0]){
+      const file = fileInput.files[0];
+      const path = 'carretillas_externo/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.pdf';
+      const { error:upErr } = await sb.storage.from('mant-pdfs').upload(path, file);
+      if(upErr) throw upErr;
+      const { data:pub } = sb.storage.from('mant-pdfs').getPublicUrl(path);
+      pdf_url = pub.publicUrl;
+    }
+    const ambitoObj = (w.ambitos||[]).find(a=>a.id===w.ambitoId);
+    const { error } = await sb.from('mant_registros_simple').insert({
+      trabajador_id: state.trabajador.id, numero_empleado: state.trabajador.numero_empleado, trabajador_nombre: state.trabajador.nombre,
+      tipo:'carretillas_externo', referencia_nombre: ambitoObj?ambitoObj.label:null,
+      empresa_externa: w.simpleEmpresa||null, descripcion: w.simpleDescripcion, pdf_url,
+    });
+    if(error) throw error;
+    toast('Registro guardado correctamente','success');
+    state.misRegistros=null; state.historial=null;
+    w.simpleDescripcion=''; w.simpleEmpresa=''; w.carretillaModo=null;
+    drawWizard();
+  }catch(e){
+    toast('Error al guardar: '+e.message,'error');
+    btn.disabled=false; btn.textContent='Guardar';
+  }
+}
+
+/* ---------- Extintores ---------- */
+async function loadExtintoresList(){
+  const w = state.wizard;
+  const { data } = await sb.from('mant_extintores').select('*').eq('activo',true).order('numero');
+  w.extintores = data||[];
+}
+
+function drawExtintoresFlow(w){
+  let html = '<div class="card">';
+  html += wizardBackHeader('Extintores');
+  if(w.extintores===null){
+    html += '<div class="section-title">Extintor</div><div class="spinner"></div></div>';
+    return html;
+  }
+  html += '<div class="section-title">Extintor</div><div class="chip-row" id="wiz-extintores">';
+  html += w.extintores.map(e=>`<button class="chip-btn ${w.extintorId===e.id?'selected':''}" data-extintor="${e.id}">Nº ${esc(e.numero)}${e.ubicacion?' · '+esc(e.ubicacion):''}</button>`).join('');
+  html += '</div>';
+  if(w.extintores.length===0){
+    html += '<div class="empty-state">Todavía no hay extintores dados de alta. Añádelos desde Catálogo.</div></div>';
+    return html;
+  }
+  if(w.extintorId){
+    html += '<div class="section-title" style="margin-top:18px;">Tipo de revisión</div>';
+    html += `<div class="tipo-row">
+      <button class="tipo-btn preventivo ${w.extintorModo==='trimestral'?'selected':''}" data-extmodo="trimestral">📋 Revisión trimestral</button>
+      <button class="tipo-btn correctivo ${w.extintorModo==='anual'?'selected':''}" data-extmodo="anual">🏭 Inspección anual (empresa externa)</button>
+    </div>`;
+  }
+  if(w.extintorId && w.extintorModo==='trimestral'){
+    html += drawChecklist(w);
+  } else if(w.extintorId && w.extintorModo==='anual'){
+    html += drawExtintorAnualForm(w);
+  }
+  html += '</div>';
+  return html;
+}
+
+function drawChecklist(w){
+  let html = '<div class="section-title" style="margin-top:18px;">Checklist de revisión</div>';
+  if(!w.checklist){ return html + '<div class="spinner"></div>'; }
+  if(w.checklist.length===0){ return html + '<div class="empty-state">No hay preguntas configuradas. Añádelas desde Catálogo.</div>'; }
+  html += '<div class="checklist">';
+  w.checklist.forEach(q=>{
+    const val = w.respuestas[q.id];
+    html += `<div class="checklist-item">
+      <span class="checklist-q">${esc(q.pregunta)}</span>
+      <div class="checklist-toggle">
+        <button class="chk-btn si ${val===true?'active':''}" data-chk="${q.id}" data-val="true">Sí</button>
+        <button class="chk-btn no ${val===false?'active':''}" data-chk="${q.id}" data-val="false">No</button>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  html += '<div class="section-title" style="margin-top:18px;">Observaciones (opcional)</div>';
+  html += `<textarea id="wiz-ext-obs" placeholder="Notas adicionales...">${esc(w.observaciones)}</textarea>`;
+  const answered = w.checklist.every(q=> w.respuestas[q.id]!==undefined);
+  html += `<div style="margin-top:18px;"><button class="btn btn-amber" id="btn-guardar-checklist" ${answered?'':'disabled'}>Guardar revisión</button></div>`;
+  if(!answered) html += '<div class="hint">Responde todas las preguntas para poder guardar.</div>';
+  return html;
+}
+
+function drawExtintorAnualForm(w){
+  let html = '<div class="section-title" style="margin-top:18px;">Certificado de la empresa externa</div>';
+  html += `<div class="field"><input type="file" id="ext-pdf" accept="application/pdf"></div>`;
+  html += '<div class="section-title" style="margin-top:14px;">Observaciones (opcional)</div>';
+  html += `<textarea id="wiz-ext-obs" placeholder="Notas adicionales...">${esc(w.observaciones)}</textarea>`;
+  html += `<div style="margin-top:18px;"><button class="btn btn-amber" id="btn-guardar-anual">Guardar inspección anual</button></div>`;
+  return html;
+}
+
+function bindExtintoresEvents(){
+  const w = state.wizard;
+  bindBackHeader(w);
+  document.querySelectorAll('#wiz-extintores .chip-btn').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.extintor;
+      if(w.extintorId===id) return;
+      w.extintorId=id; w.extintorModo=null; w.checklist=null; w.respuestas={}; w.observaciones='';
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('.tipo-btn[data-extmodo]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      w.extintorModo = btn.dataset.extmodo;
+      if(w.extintorModo==='trimestral' && !w.checklist){
+        drawWizard();
+        const { data } = await sb.from('mant_extintor_checklist_items').select('*').eq('activo',true).order('orden');
+        w.checklist = data||[];
+        drawWizard();
+      } else {
+        drawWizard();
+      }
+    };
+  });
+  document.querySelectorAll('.chk-btn').forEach(btn=>{
+    btn.onclick = ()=>{ w.respuestas[btn.dataset.chk] = btn.dataset.val==='true'; drawWizard(); };
+  });
+  const obs = document.getElementById('wiz-ext-obs'); if(obs) obs.oninput = e=> w.observaciones = e.target.value;
+  const btnChk = document.getElementById('btn-guardar-checklist'); if(btnChk) btnChk.onclick = guardarRevisionTrimestral;
+  const btnAnual = document.getElementById('btn-guardar-anual'); if(btnAnual) btnAnual.onclick = guardarRevisionAnual;
+}
+
+async function guardarRevisionTrimestral(){
+  const w = state.wizard;
+  const btn = document.getElementById('btn-guardar-checklist');
+  btn.disabled=true; btn.textContent='Guardando…';
+  const extintor = (w.extintores||[]).find(e=>e.id===w.extintorId);
+  try{
+    const { data:rev, error:revErr } = await sb.from('mant_extintor_revisiones').insert({
+      trabajador_id: state.trabajador.id, numero_empleado: state.trabajador.numero_empleado, trabajador_nombre: state.trabajador.nombre,
+      extintor_id: w.extintorId, extintor_numero: extintor?extintor.numero:null, tipo:'trimestral', observaciones: w.observaciones||null,
+    }).select().single();
+    if(revErr) throw revErr;
+    const respRows = w.checklist.map(q=>({ revision_id:rev.id, pregunta_id:q.id, pregunta_texto:q.pregunta, respuesta: w.respuestas[q.id] }));
+    const { error:respErr } = await sb.from('mant_extintor_revision_respuestas').insert(respRows);
+    if(respErr) throw respErr;
+    toast('Revisión guardada correctamente','success');
+    state.misRegistros=null; state.historial=null;
+    w.extintorId=null; w.extintorModo=null; w.checklist=null; w.respuestas={}; w.observaciones='';
+    drawWizard();
+  }catch(e){
+    toast('Error al guardar: '+e.message,'error');
+    btn.disabled=false; btn.textContent='Guardar revisión';
+  }
+}
+
+async function guardarRevisionAnual(){
+  const w = state.wizard;
+  const btn = document.getElementById('btn-guardar-anual');
+  const fileInput = document.getElementById('ext-pdf');
+  btn.disabled=true; btn.textContent='Guardando…';
+  try{
+    let pdf_url = null;
+    if(fileInput.files && fileInput.files[0]){
+      const file = fileInput.files[0];
+      const path = 'extintores/'+w.extintorId+'-'+Date.now()+'.pdf';
+      const { error:upErr } = await sb.storage.from('mant-pdfs').upload(path, file, { upsert:true });
+      if(upErr) throw upErr;
+      const { data:pub } = sb.storage.from('mant-pdfs').getPublicUrl(path);
+      pdf_url = pub.publicUrl;
+    }
+    const extintor = (w.extintores||[]).find(e=>e.id===w.extintorId);
+    const { error } = await sb.from('mant_extintor_revisiones').insert({
+      trabajador_id: state.trabajador.id, numero_empleado: state.trabajador.numero_empleado, trabajador_nombre: state.trabajador.nombre,
+      extintor_id: w.extintorId, extintor_numero: extintor?extintor.numero:null, tipo:'anual', observaciones: w.observaciones||null, pdf_url,
+    });
+    if(error) throw error;
+    toast('Inspección anual guardada','success');
+    state.misRegistros=null; state.historial=null;
+    w.extintorId=null; w.extintorModo=null; w.observaciones='';
+    drawWizard();
+  }catch(e){
+    toast('Error al guardar: '+e.message,'error');
+    btn.disabled=false; btn.textContent='Guardar inspección anual';
+  }
+}
+
+/* ---------- Flujo simple (compresores, gas, informático, residuos, otros) ---------- */
+function drawSimpleFlow(w){
+  const meta = TIPOS_MANTENIMIENTO.find(t=>t.code===w.tipoMant);
+  let html = '<div class="card">';
+  html += wizardBackHeader(meta?meta.label:'Mantenimiento');
+  const subtipos = SUBTIPOS[w.tipoMant];
+  if(subtipos){
+    html += '<div class="section-title">Subtipo</div><div class="chip-row" id="wiz-subtipo">';
+    html += subtipos.map(s=>`<button class="chip-btn ${w.simpleSubtipo===s.code?'selected':''}" data-subtipo="${s.code}">${esc(s.label)}</button>`).join('');
+    html += '</div>';
+    if(!w.simpleSubtipo){ html += '</div>'; return html; }
+  }
+  html += drawSimpleForm(w);
+  html += '</div>';
+  return html;
+}
+
+function drawSimpleForm(w){
+  let html = '';
+  if(w.tipoMant==='otros'){
+    html += '<div class="section-title" style="margin-top:14px;">Título</div>';
+    html += `<div class="field"><input id="sf-titulo" value="${esc(w.simpleTitulo)}" placeholder="Ej. Pintado de línea de almacenaje"></div>`;
+  }
+  html += '<div class="section-title" style="margin-top:14px;">Descripción</div>';
+  html += `<textarea id="sf-descripcion" placeholder="Describe la intervención realizada...">${esc(w.simpleDescripcion)}</textarea>`;
+  html += '<div class="section-title" style="margin-top:14px;">Empresa externa (opcional)</div>';
+  html += `<div class="field"><input id="sf-empresa" value="${esc(w.simpleEmpresa)}" placeholder="Nombre de la empresa"></div>`;
+  html += '<div class="section-title" style="margin-top:14px;">Adjuntar PDF (opcional)</div>';
+  html += `<div class="field"><input type="file" id="sf-pdf" accept="application/pdf"></div>`;
+  html += `<div style="margin-top:18px;"><button class="btn btn-amber" id="btn-guardar-simple">Guardar</button></div>`;
+  return html;
+}
+
+function bindSimpleFlowEvents(){
+  const w = state.wizard;
+  bindBackHeader(w);
+  document.querySelectorAll('#wiz-subtipo .chip-btn').forEach(btn=>{
+    btn.onclick = ()=>{ w.simpleSubtipo = btn.dataset.subtipo; drawWizard(); };
+  });
+  bindSimpleFormEvents(w, ()=>guardarRegistroSimple(w.tipoMant));
+}
+
+function bindSimpleFormEvents(w, onSave){
+  const titulo = document.getElementById('sf-titulo'); if(titulo) titulo.oninput = e=> w.simpleTitulo = e.target.value;
+  const desc = document.getElementById('sf-descripcion'); if(desc) desc.oninput = e=> w.simpleDescripcion = e.target.value;
+  const emp = document.getElementById('sf-empresa'); if(emp) emp.oninput = e=> w.simpleEmpresa = e.target.value;
+  const btn = document.getElementById('btn-guardar-simple'); if(btn) btn.onclick = onSave;
+}
+
+async function guardarRegistroSimple(tipo){
+  const w = state.wizard;
+  const btn = document.getElementById('btn-guardar-simple');
+  const fileInput = document.getElementById('sf-pdf');
+  if(!w.simpleDescripcion || !w.simpleDescripcion.trim()){ toast('Escribe una descripción','error'); return; }
+  btn.disabled=true; btn.textContent='Guardando…';
+  try{
+    let pdf_url=null;
+    if(fileInput && fileInput.files && fileInput.files[0]){
+      const file = fileInput.files[0];
+      const path = tipo+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.pdf';
+      const { error:upErr } = await sb.storage.from('mant-pdfs').upload(path, file);
+      if(upErr) throw upErr;
+      const { data:pub } = sb.storage.from('mant-pdfs').getPublicUrl(path);
+      pdf_url = pub.publicUrl;
+    }
+    const { error } = await sb.from('mant_registros_simple').insert({
+      trabajador_id: state.trabajador.id, numero_empleado: state.trabajador.numero_empleado, trabajador_nombre: state.trabajador.nombre,
+      tipo, subtipo: w.simpleSubtipo || null, titulo: w.simpleTitulo || null,
+      empresa_externa: w.simpleEmpresa || null, descripcion: w.simpleDescripcion, pdf_url,
+    });
+    if(error) throw error;
+    toast('Registro guardado correctamente','success');
+    state.misRegistros=null; state.historial=null;
+    w.simpleTitulo=''; w.simpleDescripcion=''; w.simpleEmpresa=''; w.simpleSubtipo=null;
+    drawWizard();
+  }catch(e){
+    toast('Error al guardar: '+e.message,'error');
+    btn.disabled=false; btn.textContent='Guardar';
+  }
+}
+
+/* ============================================================
+   EVENTOS UNIFICADOS (líneas/vehículos + extintores + simples)
+   ============================================================ */
+async function loadAllEventos(scopeTrabajadorId){
+  let qArbol = sb.from('mant_registros').select('*, mant_registro_items(*)').order('ts',{ascending:false}).limit(1000);
+  let qExt = sb.from('mant_extintor_revisiones').select('*, mant_extintor_revision_respuestas(*)').order('ts',{ascending:false}).limit(1000);
+  let qSimple = sb.from('mant_registros_simple').select('*').order('ts',{ascending:false}).limit(1000);
+  if(scopeTrabajadorId){
+    qArbol = qArbol.eq('trabajador_id', scopeTrabajadorId);
+    qExt = qExt.eq('trabajador_id', scopeTrabajadorId);
+    qSimple = qSimple.eq('trabajador_id', scopeTrabajadorId);
+  }
+  const [{data:arbol}, {data:ext}, {data:simple}] = await Promise.all([qArbol, qExt, qSimple]);
+  const rows = [];
+  (arbol||[]).forEach(r=>{
+    const items = (r.mant_registro_items && r.mant_registro_items.length) ? r.mant_registro_items : [null];
+    items.forEach(it=>{
+      rows.push({
+        ts: r.ts,
+        tipoCode: r.ambito==='vehiculo' ? 'carretillas' : 'lineas_fabricacion',
+        tipoLabel: r.ambito==='vehiculo' ? 'Carretillas (interno)' : 'Líneas de Fabricación',
+        referenciaAmbito: r.ambito==='vehiculo' ? (r.vehiculo_nombre||'') : (r.linea_codigo||''),
+        subtipo: r.tipo,
+        numeroEmpleado: r.numero_empleado, operario: r.trabajador_nombre,
+        detalle: it ? (it.elemento_nombre+' › '+it.tarea_nombre) : '',
+        referencia: it?(it.referencia||''):'', ubicacion: it?(it.ubicacion||''):'',
+        observaciones: r.observaciones||'',
+        adjuntoUrl: it?(it.foto_url||''):'', adjuntoTipo: it&&it.foto_url?'foto':'',
+      });
+    });
+  });
+  (ext||[]).forEach(r=>{
+    const resp = r.mant_extintor_revision_respuestas||[];
+    let detalle;
+    if(r.tipo==='trimestral'){
+      const noOk = resp.filter(x=>x.respuesta===false).length;
+      detalle = 'Checklist: '+resp.length+' preguntas'+(noOk?', '+noOk+' con incidencia':', todo correcto');
+    } else {
+      detalle = 'Inspección anual empresa externa';
+    }
+    rows.push({
+      ts: r.ts, tipoCode:'extintores', tipoLabel:'Extintores',
+      referenciaAmbito: 'Nº '+(r.extintor_numero||''),
+      subtipo: r.tipo==='trimestral'?'Revisión trimestral':'Inspección anual',
+      numeroEmpleado: r.numero_empleado, operario: r.trabajador_nombre,
+      detalle, referencia:'', ubicacion:'',
+      observaciones: r.observaciones||'',
+      adjuntoUrl: r.pdf_url||'', adjuntoTipo: r.pdf_url?'pdf':'',
+    });
+  });
+  (simple||[]).forEach(r=>{
+    const esCarretillaExterna = r.tipo==='carretillas_externo';
+    const subtipoTxt = r.subtipo ? subtipoLabelFor(r.tipo, r.subtipo)
+      : esCarretillaExterna ? ('Externo'+(r.empresa_externa?(' · '+r.empresa_externa):''))
+      : (r.empresa_externa?('Empresa: '+r.empresa_externa):'');
+    rows.push({
+      ts: r.ts, tipoCode: esCarretillaExterna?'carretillas':r.tipo,
+      tipoLabel: tipoMantLabel(esCarretillaExterna?'carretillas':r.tipo),
+      referenciaAmbito: esCarretillaExterna ? (r.referencia_nombre||'') : (r.titulo || r.empresa_externa || ''),
+      subtipo: subtipoTxt,
+      numeroEmpleado: r.numero_empleado, operario: r.trabajador_nombre,
+      detalle: r.descripcion||'', referencia:'', ubicacion:'',
+      observaciones:'',
+      adjuntoUrl: r.pdf_url||'', adjuntoTipo: r.pdf_url?'pdf':'',
+    });
+  });
+  rows.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
+  return rows;
 }
 
 /* ============================================================
@@ -850,36 +1378,27 @@ async function guardarRegistro(){
 async function renderTabMisRegistros(){
   const el = document.getElementById('tab-content');
   el.innerHTML = '<div class="spinner"></div>';
-  const { data, error } = await sb.from('mant_registros').select('*, mant_registro_items(*)').eq('trabajador_id', state.trabajador.id).order('ts',{ascending:false}).limit(200);
-  if(error){ el.innerHTML = '<div class="card"><div class="error-box">No se pudieron cargar tus registros.</div></div>'; return; }
-  state.misRegistros = data;
-  el.innerHTML = renderRegistrosList(data, false);
+  const rows = await loadAllEventos(state.trabajador.id);
+  state.misRegistros = rows;
+  el.innerHTML = renderEventosCards(rows);
 }
 
-function renderRegistrosList(rows, showWorker){
+function renderEventosCards(rows){
   if(!rows || rows.length===0) return '<div class="card"><div class="empty-state">Todavía no hay registros.</div></div>';
-  return rows.map(r=>{
-    const items = r.mant_registro_items || [];
-    return `<div class="registro-card">
-      <div class="registro-top">
-        <div>
-          <div class="registro-linea">${esc(r.linea_codigo||'')}</div>
-          ${showWorker?`<div class="worker-line">${esc(r.trabajador_nombre||'')} · Nº ${esc(r.numero_empleado||'')}</div>`:''}
-        </div>
-        <div style="text-align:right;">
-          <span class="badge ${r.tipo}">${esc(r.tipo)}</span>
-          <div class="registro-fecha">${fmtFechaHora(r.ts)}</div>
-        </div>
+  return rows.map(r=>`<div class="registro-card">
+    <div class="registro-top">
+      <div>
+        <div class="registro-linea">${esc(r.tipoLabel)}${r.referenciaAmbito?' · '+esc(r.referenciaAmbito):''}</div>
+        ${r.subtipo?`<div class="worker-line">${esc(r.subtipo)}</div>`:''}
       </div>
-      ${items.map(it=>`<div class="item-row">
-        ${it.foto_url?`<img src="${esc(it.foto_url)}">`:'<div class="imgph"></div>'}
-        <div class="item-text"><b>${esc(it.tarea_nombre)}</b> <span class="mini">(${esc(it.elemento_nombre)})</span>
-          ${it.referencia||it.ubicacion?`<div class="mini">${it.referencia?'Ref: '+esc(it.referencia):''}${it.ubicacion?' · '+esc(it.ubicacion):''}</div>`:''}
-        </div>
-      </div>`).join('')}
-      ${r.observaciones?`<div class="obs-line">"${esc(r.observaciones)}"</div>`:''}
-    </div>`;
-  }).join('');
+      <div style="text-align:right;">
+        <div class="registro-fecha">${fmtFechaHora(r.ts)}</div>
+      </div>
+    </div>
+    ${r.detalle?`<div class="item-row"><div class="item-text">${esc(r.detalle)}${r.referencia||r.ubicacion?`<div class="mini">${r.referencia?'Ref: '+esc(r.referencia):''}${r.ubicacion?' · '+esc(r.ubicacion):''}</div>`:''}</div></div>`:''}
+    ${r.adjuntoUrl?`<div class="item-row">${r.adjuntoTipo==='foto'?`<img src="${esc(r.adjuntoUrl)}">`:`<a class="pdf-btn" href="${esc(r.adjuntoUrl)}" target="_blank" rel="noopener">📄 Ver PDF</a>`}</div>`:''}
+    ${r.observaciones?`<div class="obs-line">"${esc(r.observaciones)}"</div>`:''}
+  </div>`).join('');
 }
 
 /* ============================================================
@@ -889,11 +1408,8 @@ async function renderTabHistorial(){
   const el = document.getElementById('tab-content');
   el.innerHTML = '<div class="spinner"></div>';
   if(!state.historial){
-    const [{data:regs}, {data:lineas}] = await Promise.all([
-      sb.from('mant_registros').select('*, mant_registro_items(*)').order('ts',{ascending:false}).limit(1000),
-      sb.from('mant_lineas').select('*').order('codigo'),
-    ]);
-    state.historial = { all: regs||[], lineas: lineas||[] };
+    const rows = await loadAllEventos(null);
+    state.historial = { all: rows };
   }
   drawHistorial();
 }
@@ -903,9 +1419,8 @@ function drawHistorial(){
   const h = state.historial;
   const f = state.historialFiltros;
   const rows = h.all.filter(r=>{
-    if(f.linea && r.linea_codigo!==f.linea) return false;
-    if(f.tipo && r.tipo!==f.tipo) return false;
-    if(f.trabajador && !(r.trabajador_nombre||'').toLowerCase().includes(f.trabajador.toLowerCase())) return false;
+    if(f.tipoMant && r.tipoCode!==f.tipoMant) return false;
+    if(f.trabajador && !(r.operario||'').toLowerCase().includes(f.trabajador.toLowerCase())) return false;
     if(f.desde && r.ts < f.desde) return false;
     if(f.hasta && r.ts > f.hasta+'T23:59:59') return false;
     return true;
@@ -914,8 +1429,7 @@ function drawHistorial(){
   let html = '<div class="card">';
   html += '<div class="toolbar"><h2 style="margin:0;">Historial de mantenimientos</h2><button class="btn btn-outline btn-sm" id="btn-export">⬇ Exportar CSV</button></div>';
   html += `<div class="filters-row">
-    <select id="f-linea"><option value="">Todas las líneas</option>${h.lineas.map(l=>`<option value="${esc(l.codigo)}" ${f.linea===l.codigo?'selected':''}>${esc(l.codigo)}</option>`).join('')}</select>
-    <select id="f-tipo"><option value="">Todos los tipos</option><option value="preventivo" ${f.tipo==='preventivo'?'selected':''}>Preventivo</option><option value="correctivo" ${f.tipo==='correctivo'?'selected':''}>Correctivo</option></select>
+    <select id="f-tipomant"><option value="">Todos los tipos</option>${TIPOS_MANTENIMIENTO.map(t=>`<option value="${t.code}" ${f.tipoMant===t.code?'selected':''}>${esc(t.label)}</option>`).join('')}</select>
     <input id="f-trab" type="text" placeholder="Buscar operario…" value="${esc(f.trabajador)}">
     <input id="f-desde" type="date" value="${esc(f.desde)}">
     <input id="f-hasta" type="date" value="${esc(f.hasta)}">
@@ -925,8 +1439,7 @@ function drawHistorial(){
   html += `<div class="card" style="padding:0;overflow:hidden;">${renderHistorialTable(rows)}</div>`;
 
   el.innerHTML = html;
-  document.getElementById('f-linea').onchange = e=>{ f.linea=e.target.value; drawHistorial(); };
-  document.getElementById('f-tipo').onchange = e=>{ f.tipo=e.target.value; drawHistorial(); };
+  document.getElementById('f-tipomant').onchange = e=>{ f.tipoMant=e.target.value; drawHistorial(); };
   document.getElementById('f-trab').oninput = e=>{ f.trabajador=e.target.value; drawHistorial(); };
   document.getElementById('f-desde').onchange = e=>{ f.desde=e.target.value; drawHistorial(); };
   document.getElementById('f-hasta').onchange = e=>{ f.hasta=e.target.value; drawHistorial(); };
@@ -936,44 +1449,37 @@ function drawHistorial(){
 function renderHistorialTable(rows){
   if(!rows || rows.length===0) return '<div class="empty-state">No hay registros con estos filtros.</div>';
   let html = '<div class="table-scroll"><table class="admin-table hist-table"><thead><tr>';
-  html += ['Fecha','Hora','Línea','Tipo','Nº','Operario','Elemento','Tarea','Referencia','Ubicación','Observaciones','Foto'].map(h=>`<th>${h}</th>`).join('');
+  html += ['Fecha','Hora','Tipo','Referencia','Subtipo','Nº','Operario','Detalle','Ref. repuesto','Ubicación','Observaciones','Adjunto'].map(h=>`<th>${h}</th>`).join('');
   html += '</tr></thead><tbody>';
   rows.forEach(r=>{
     const d = new Date(r.ts);
     const fecha = d.toLocaleDateString('es-ES',{timeZone:'Europe/Madrid'});
     const hora = d.toLocaleTimeString('es-ES',{timeZone:'Europe/Madrid', hour:'2-digit', minute:'2-digit'});
-    const items = (r.mant_registro_items && r.mant_registro_items.length) ? r.mant_registro_items : [null];
-    items.forEach(it=>{
-      html += `<tr>
-        <td>${fecha}</td>
-        <td>${hora}</td>
-        <td>${esc(r.linea_codigo||'')}</td>
-        <td><span class="badge ${r.tipo}">${esc(r.tipo)}</span></td>
-        <td>${esc(r.numero_empleado||'')}</td>
-        <td>${esc(r.trabajador_nombre||'')}</td>
-        <td>${it?esc(it.elemento_nombre||''):''}</td>
-        <td>${it?esc(it.tarea_nombre||''):'<span class="hint">—</span>'}</td>
-        <td>${it&&it.referencia?esc(it.referencia):''}</td>
-        <td>${it&&it.ubicacion?esc(it.ubicacion):''}</td>
-        <td class="obs-cell">${esc(r.observaciones||'')}</td>
-        <td>${it&&it.foto_url?`<img class="hist-thumb" src="${esc(it.foto_url)}">`:''}</td>
-      </tr>`;
-    });
+    html += `<tr>
+      <td>${fecha}</td><td>${hora}</td>
+      <td>${esc(r.tipoLabel)}</td>
+      <td>${esc(r.referenciaAmbito)}</td>
+      <td>${esc(r.subtipo)}</td>
+      <td>${esc(r.numeroEmpleado||'')}</td>
+      <td>${esc(r.operario||'')}</td>
+      <td>${esc(r.detalle||'')}</td>
+      <td>${esc(r.referencia||'')}</td>
+      <td>${esc(r.ubicacion||'')}</td>
+      <td class="obs-cell">${esc(r.observaciones||'')}</td>
+      <td>${r.adjuntoUrl?(r.adjuntoTipo==='foto'?`<img class="hist-thumb" src="${esc(r.adjuntoUrl)}">`:`<a class="pdf-btn" href="${esc(r.adjuntoUrl)}" target="_blank" rel="noopener">📄</a>`):''}</td>
+    </tr>`;
   });
   html += '</tbody></table></div>';
   return html;
 }
 
 function exportCSV(rows){
-  const lines = [['Fecha','Hora','Linea','Tipo','Operario','Nº empleado','Elemento','Tarea','Referencia','Ubicacion','Observaciones'].join(';')];
+  const lines = [['Fecha','Hora','Tipo','Referencia','Subtipo','Nº empleado','Operario','Detalle','Ref. repuesto','Ubicacion','Observaciones','Adjunto'].join(';')];
   rows.forEach(r=>{
     const d = new Date(r.ts);
     const fecha = d.toLocaleDateString('es-ES',{timeZone:'Europe/Madrid'});
     const hora = d.toLocaleTimeString('es-ES',{timeZone:'Europe/Madrid'});
-    const items = (r.mant_registro_items && r.mant_registro_items.length) ? r.mant_registro_items : [{}];
-    items.forEach(it=>{
-      lines.push([fecha,hora,r.linea_codigo||'',r.tipo,r.trabajador_nombre||'',r.numero_empleado||'',it.elemento_nombre||'',it.tarea_nombre||'',it.referencia||'',it.ubicacion||'',r.observaciones||''].map(csvEsc).join(';'));
-    });
+    lines.push([fecha,hora,r.tipoLabel,r.referenciaAmbito,r.subtipo,r.numeroEmpleado||'',r.operario||'',r.detalle||'',r.referencia||'',r.ubicacion||'',r.observaciones||'',r.adjuntoUrl||''].map(csvEsc).join(';'));
   });
   const csv = '﻿'+lines.join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
@@ -997,30 +1503,32 @@ async function renderTabCatalogo(){
 
 async function ensureCatalogoLoaded(){
   const c = state.catalogo;
-  if(c.lineas===null){
-    const { data } = await sb.from('mant_lineas').select('*').order('codigo');
-    c.lineas = data||[];
-  }
-  if(c.elementos===null){
-    const { data } = await sb.from('mant_elementos').select('*').order('nombre');
-    c.elementos = data||[];
-  }
-  if(c.lineaElementos===null){
-    const { data } = await sb.from('mant_linea_elementos').select('*');
-    c.lineaElementos = data||[];
+  if(c.lineas===null){ const { data } = await sb.from('mant_lineas').select('*').order('codigo'); c.lineas = data||[]; }
+  if(c.elementos===null){ const { data } = await sb.from('mant_elementos').select('*').order('nombre'); c.elementos = data||[]; }
+  if(c.lineaElementos===null){ const { data } = await sb.from('mant_linea_elementos').select('*'); c.lineaElementos = data||[]; }
+  if(c.vehiculos===null){ const { data } = await sb.from('mant_vehiculos').select('*').order('nombre'); c.vehiculos = data||[]; }
+  if(c.vehiculoElementos===null){ const { data } = await sb.from('mant_vehiculo_elementos').select('*'); c.vehiculoElementos = data||[]; }
+  if(c.extintores===null){ const { data } = await sb.from('mant_extintores').select('*').order('numero'); c.extintores = data||[]; }
+  if(c.checklist===null){ const { data } = await sb.from('mant_extintor_checklist_items').select('*').order('orden'); c.checklist = data||[]; }
+  if(c.stockItems===null){
+    const { data } = await sb.from('mant_tareas').select('id,nombre,stock,elemento_id,mant_elementos(nombre)').not('stock','is',null).order('nombre');
+    c.stockItems = (data||[]).map(t=>({ id:t.id, nombre:t.nombre, stock:t.stock, elemento_nombre: t.mant_elementos?t.mant_elementos.nombre:'' }));
   }
 }
 
 function drawCatalogo(){
   const el = document.getElementById('tab-content');
   const c = state.catalogo;
-  const catLabels = {lineas:'Líneas', elementos:'Elementos', tareas:'Árbol de tareas'};
+  const catLabels = {lineas:'Líneas', elementos:'Elementos', tareas:'Árbol de tareas', vehiculos:'Vehículos', extintores:'Extintores', stock:'Stock'};
   let html = '<div class="subtabs">';
   html += Object.keys(catLabels).map(k=>`<button data-ctab="${k}" class="${state.catalogoTab===k?'active':''}">${catLabels[k]}</button>`).join('');
   html += '</div>';
   if(state.catalogoTab==='lineas') html += drawCatLineas();
   else if(state.catalogoTab==='elementos') html += drawCatElementos();
-  else html += drawCatTareas();
+  else if(state.catalogoTab==='tareas') html += drawCatTareas();
+  else if(state.catalogoTab==='vehiculos') html += drawCatVehiculos();
+  else if(state.catalogoTab==='extintores') html += drawCatExtintores();
+  else html += drawCatStock();
   el.innerHTML = html;
   bindCatalogoEvents();
 }
@@ -1121,7 +1629,9 @@ function renderAdminTareaNodes(nodes){
       <div class="tree-row">
         <span class="name">${esc(n.nombre)}${!n.activo?' <span class="pill off">inactiva</span>':''}</span>
         ${n.referencia?`<span class="meta">Ref: ${esc(n.referencia)}</span>`:''}
+        ${(n.stock!==null && n.stock!==undefined)?`<span class="stock-badge ${n.stock<=0?'zero':n.stock<=2?'low':''}">Stock: ${n.stock}</span>`:''}
         ${n.foto_url?`<img class="thumb-preview" src="${esc(n.foto_url)}">`:''}
+        ${n.pdf_url?`<a class="pdf-btn" href="${esc(n.pdf_url)}" target="_blank" rel="noopener">📄</a>`:''}
         <button class="icon-btn" data-edit-tarea="${n.id}" title="Editar">✎</button>
         <button class="icon-btn" data-add-sub="${n.id}" title="Añadir subtarea">+</button>
       </div>
@@ -1139,10 +1649,17 @@ function renderTareaEditBox(n){
       <input id="et-nombre" value="${esc(n.nombre)}" placeholder="Nombre">
       <input id="et-referencia" value="${esc(n.referencia||'')}" placeholder="Referencia">
       <input id="et-ubicacion" value="${esc(n.ubicacion||'')}" placeholder="Ubicación">
+      <input id="et-stock" type="number" min="0" value="${(n.stock!==null && n.stock!==undefined) ? n.stock : ''}" placeholder="Stock (repuestos)">
     </div>
     <div class="row" style="align-items:center;">
+      <label class="hint" style="width:100%;">Foto (para repuestos, siempre visible)</label>
       <input id="et-foto" type="file" accept="image/*">
       ${n.foto_url?`<img class="thumb-preview" src="${esc(n.foto_url)}">`:''}
+    </div>
+    <div class="row" style="align-items:center;">
+      <label class="hint" style="width:100%;">PDF (instrucciones / plano / despiece, para tipo de reparación)</label>
+      <input id="et-pdf" type="file" accept="application/pdf">
+      ${n.pdf_url?`<a class="pdf-btn" href="${esc(n.pdf_url)}" target="_blank" rel="noopener">📄 Ver PDF actual</a>`:''}
     </div>
     <div class="row">
       <button class="btn btn-primary btn-sm" data-save-tarea="${n.id}">Guardar</button>
@@ -1161,10 +1678,102 @@ function renderAddSubBox(parentId){
   </div>`;
 }
 
+function drawCatVehiculos(){
+  const c = state.catalogo;
+  let html = '<div class="card"><h2>Vehículos (carretillas y transpaletas)</h2><table class="admin-table"><thead><tr><th>Nombre</th><th>Modelo</th><th>Nº serie</th><th>Batería</th><th>Estado</th><th></th></tr></thead><tbody>';
+  (c.vehiculos||[]).forEach(v=>{
+    html += `<tr><td><b>${esc(v.nombre)}</b></td><td>${esc(v.modelo||'')}</td><td>${esc(v.numero_serie||'')}</td><td>${esc(v.tipo_bateria||'')}</td>
+      <td><span class="pill ${v.activo?'on':'off'}">${v.activo?'Activo':'Inactivo'}</span></td>
+      <td>
+        <button class="icon-btn" data-toggle-vehiculo="${v.id}" title="${v.activo?'Desactivar':'Activar'}">${v.activo?'⏸':'▶'}</button>
+        <button class="icon-btn" data-manage-vehiculo="${v.id}" title="Asignar elementos">⚙</button>
+        <button class="icon-btn" data-delete-vehiculo="${v.id}" title="Eliminar">🗑</button>
+      </td></tr>`;
+  });
+  html += '</tbody></table>';
+  html += `<div class="inline-form">
+    <div class="field"><label>Nombre</label><input id="nv-nombre" placeholder="Ej. Carretilla 1"></div>
+    <div class="field"><label>Modelo</label><input id="nv-modelo" placeholder="Modelo"></div>
+    <div class="field"><label>Nº de serie</label><input id="nv-serie" placeholder="Nº serie"></div>
+    <div class="field"><label>Tipo de batería</label><input id="nv-bateria" placeholder="Ej. Litio"></div>
+    <button class="btn btn-primary btn-sm" id="btn-add-vehiculo">+ Añadir vehículo</button>
+  </div>`;
+
+  if(c.vehiculoSel){
+    const vehiculo = (c.vehiculos||[]).find(v=>v.id===c.vehiculoSel);
+    if(vehiculo){
+      html += `<div class="task-edit-box"><h3>Elementos de "${esc(vehiculo.nombre)}"</h3><div class="chip-row">`;
+      (c.elementos||[]).forEach(el=>{
+        const asignado = (c.vehiculoElementos||[]).some(ve=>ve.elemento_id===el.id && ve.vehiculo_id===vehiculo.id);
+        html += `<button class="chip-btn ${asignado?'selected':''}" data-toggle-vehiculo-elemento="${el.id}">${esc(el.nombre)}</button>`;
+      });
+      html += '</div><div class="hint" style="margin-top:8px;">Crea nuevos elementos desde la pestaña "Elementos".</div></div>';
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
+function drawCatExtintores(){
+  const c = state.catalogo;
+  let html = '<div class="card"><h2>Extintores</h2><table class="admin-table"><thead><tr><th>Nº</th><th>Tipo</th><th>Ubicación</th><th>Fabricación</th><th>Retimbrado</th><th>Estado</th><th></th></tr></thead><tbody>';
+  (c.extintores||[]).forEach(e=>{
+    html += `<tr><td><b>${esc(e.numero)}</b></td><td>${esc(e.tipo||'')}</td><td>${esc(e.ubicacion||'')}</td>
+      <td>${esc(e.fecha_fabricacion||'')}</td><td>${esc(e.fecha_retimbrado||'')}</td>
+      <td><span class="pill ${e.activo?'on':'off'}">${e.activo?'Activo':'Obsoleto'}</span></td>
+      <td>
+        <button class="icon-btn" data-toggle-extintor="${e.id}" title="${e.activo?'Marcar obsoleto':'Reactivar'}">${e.activo?'⏸':'▶'}</button>
+        <button class="icon-btn" data-delete-extintor="${e.id}" title="Eliminar">🗑</button>
+      </td></tr>`;
+  });
+  html += '</tbody></table>';
+  html += `<div class="inline-form">
+    <div class="field"><label>Número</label><input id="nex-numero" placeholder="Ej. EXT-014"></div>
+    <div class="field"><label>Tipo</label><input id="nex-tipo" placeholder="Ej. Polvo ABC"></div>
+    <div class="field"><label>Ubicación</label><input id="nex-ubicacion" placeholder="Ej. Nave 2, cuadro eléctrico"></div>
+    <div class="field"><label>Fecha fabricación</label><input id="nex-fabricacion" type="date"></div>
+    <div class="field"><label>Fecha retimbrado</label><input id="nex-retimbrado" type="date"></div>
+    <button class="btn btn-primary btn-sm" id="btn-add-extintor">+ Dar de alta</button>
+  </div>`;
+
+  html += '<h3 style="margin-top:22px;">Checklist de revisión trimestral</h3>';
+  html += '<div class="hint" style="margin-bottom:10px;">Estas preguntas se muestran a los operarios cada vez que hacen una revisión trimestral.</div>';
+  (c.checklist||[]).forEach(q=>{
+    html += `<div class="checklist-item"><span class="checklist-q">${esc(q.pregunta)}${!q.activo?' <span class="pill off">inactiva</span>':''}</span>
+      <button class="icon-btn" data-toggle-checklist="${q.id}" title="${q.activo?'Desactivar':'Activar'}">${q.activo?'⏸':'▶'}</button></div>`;
+  });
+  html += `<div class="inline-form">
+    <div class="field"><label>Nueva pregunta</label><input id="ncl-pregunta" placeholder="Ej. ¿Está el precinto intacto?"></div>
+    <button class="btn btn-primary btn-sm" id="btn-add-checklist">+ Añadir pregunta</button>
+  </div>`;
+  html += '</div>';
+  return html;
+}
+
+function drawCatStock(){
+  const c = state.catalogo;
+  let html = '<div class="card"><h2>Stock de repuestos</h2>';
+  html += '<div class="hint" style="margin-bottom:12px;">El stock baja automáticamente cuando un operario registra el uso de un repuesto. Usa "Reponer" para añadir unidades cuando llegue material nuevo.</div>';
+  if(c.stockItems===null){ html += '<div class="spinner"></div></div>'; return html; }
+  if(c.stockItems.length===0){ html += '<div class="empty-state">Todavía no hay repuestos con stock configurado. Asígnalo desde el árbol de tareas.</div></div>'; return html; }
+  html += '<table class="admin-table"><thead><tr><th>Elemento</th><th>Repuesto</th><th>Stock actual</th><th>Reponer</th></tr></thead><tbody>';
+  c.stockItems.forEach(t=>{
+    const low = t.stock<=2;
+    html += `<tr><td>${esc(t.elemento_nombre)}</td><td>${esc(t.nombre)}</td>
+      <td><span class="stock-badge ${t.stock<=0?'zero':low?'low':''}">${t.stock}</span></td>
+      <td><div style="display:flex;gap:6px;align-items:center;">
+        <input type="number" min="1" value="1" id="rep-${t.id}" style="width:60px;padding:6px 8px;border:1.5px solid var(--steel-200);border-radius:7px;font-size:12.5px;">
+        <button class="btn btn-outline btn-sm" data-reponer="${t.id}">+ Reponer</button>
+      </div></td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
 function bindCatalogoEvents(){
   const c = state.catalogo;
   document.querySelectorAll('[data-ctab]').forEach(b=>{
-    b.onclick = ()=>{ state.catalogoTab = b.dataset.ctab; c.elementoSel=null; c.editingTareaId=null; c.addingSubTo=null; drawCatalogo(); };
+    b.onclick = ()=>{ state.catalogoTab = b.dataset.ctab; c.elementoSel=null; c.editingTareaId=null; c.addingSubTo=null; c.vehiculoSel=null; drawCatalogo(); };
   });
 
   const btnAddLinea = document.getElementById('btn-add-linea');
@@ -1231,9 +1840,10 @@ function bindCatalogoEvents(){
       }
       c.elementos = c.elementos.filter(x=>x.id!==id);
       c.lineaElementos = c.lineaElementos.filter(le=>le.elemento_id!==id);
+      c.vehiculoElementos = (c.vehiculoElementos||[]).filter(ve=>ve.elemento_id!==id);
       delete c.tareasPorElemento[id];
       if(c.elementoSel===id) c.elementoSel=null;
-      state.wizard=null; state.historial=null;
+      state.wizard=null; state.historial=null; c.stockItems=null;
       drawCatalogo();
       toast('Elemento eliminado','success');
     };
@@ -1303,11 +1913,13 @@ function bindCatalogoEvents(){
       const nombre = document.getElementById('et-nombre').value.trim();
       const referencia = document.getElementById('et-referencia').value.trim();
       const ubicacion = document.getElementById('et-ubicacion').value.trim();
-      const fileInput = document.getElementById('et-foto');
-      let foto_url;
-      if(fileInput.files && fileInput.files[0]){
-        b.disabled = true; b.textContent='Subiendo foto…';
-        const file = fileInput.files[0];
+      const stockRaw = document.getElementById('et-stock').value;
+      const fotoInput = document.getElementById('et-foto');
+      const pdfInput = document.getElementById('et-pdf');
+      let foto_url, pdf_url;
+      b.disabled = true; b.textContent='Guardando…';
+      if(fotoInput.files && fotoInput.files[0]){
+        const file = fotoInput.files[0];
         const ext = (file.name.split('.').pop()||'jpg');
         const path = 'componentes/'+id+'-'+Date.now()+'.'+ext;
         const { error:upErr } = await sb.storage.from('mant-fotos').upload(path, file, { upsert:true });
@@ -1315,12 +1927,22 @@ function bindCatalogoEvents(){
         const { data:pub } = sb.storage.from('mant-fotos').getPublicUrl(path);
         foto_url = pub.publicUrl;
       }
-      const payload = { nombre, referencia: referencia||null, ubicacion: ubicacion||null };
+      if(pdfInput.files && pdfInput.files[0]){
+        const file = pdfInput.files[0];
+        const path = 'tareas/'+id+'-'+Date.now()+'.pdf';
+        const { error:upErr } = await sb.storage.from('mant-pdfs').upload(path, file, { upsert:true });
+        if(upErr){ toast('Error subiendo PDF: '+upErr.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
+        const { data:pub } = sb.storage.from('mant-pdfs').getPublicUrl(path);
+        pdf_url = pub.publicUrl;
+      }
+      const payload = { nombre, referencia: referencia||null, ubicacion: ubicacion||null, stock: stockRaw===''?null:parseInt(stockRaw,10) };
       if(foto_url) payload.foto_url = foto_url;
+      if(pdf_url) payload.pdf_url = pdf_url;
       const { error } = await sb.from('mant_tareas').update(payload).eq('id', id);
-      if(error){ toast('Error: '+error.message,'error'); return; }
+      if(error){ toast('Error: '+error.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
       c.editingTareaId=null;
       await recargarTareas(c.elementoSel);
+      c.stockItems=null;
       toast('Tarea actualizada','success');
     };
   });
@@ -1333,6 +1955,138 @@ function bindCatalogoEvents(){
       if(error){ toast('Error: '+error.message,'error'); return; }
       c.editingTareaId=null;
       await recargarTareas(c.elementoSel);
+    };
+  });
+
+  // Vehículos
+  const btnAddVehiculo = document.getElementById('btn-add-vehiculo');
+  if(btnAddVehiculo) btnAddVehiculo.onclick = async ()=>{
+    const nombre = document.getElementById('nv-nombre').value.trim();
+    const modelo = document.getElementById('nv-modelo').value.trim();
+    const numero_serie = document.getElementById('nv-serie').value.trim();
+    const tipo_bateria = document.getElementById('nv-bateria').value.trim();
+    if(!nombre){ toast('Introduce un nombre','error'); return; }
+    const { error } = await sb.from('mant_vehiculos').insert({ nombre, modelo:modelo||null, numero_serie:numero_serie||null, tipo_bateria:tipo_bateria||null });
+    if(error){ toast('Error: '+error.message,'error'); return; }
+    c.vehiculos=null; await ensureCatalogoLoaded(); drawCatalogo();
+    toast('Vehículo añadido','success');
+  };
+  document.querySelectorAll('[data-toggle-vehiculo]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.toggleVehiculo; const v=c.vehiculos.find(x=>x.id===id);
+      const { error } = await sb.from('mant_vehiculos').update({ activo: !v.activo }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      v.activo=!v.activo; state.wizard=null; drawCatalogo();
+    };
+  });
+  document.querySelectorAll('[data-delete-vehiculo]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.deleteVehiculo; const v=c.vehiculos.find(x=>x.id===id);
+      if(!confirm('¿Eliminar el vehículo "'+v.nombre+'"? Esta acción no se puede deshacer.')) return;
+      const { error } = await sb.from('mant_vehiculos').delete().eq('id', id);
+      if(error){
+        if(error.code==='23503'){ toast('No se puede eliminar: este vehículo tiene registros de mantenimiento guardados.','error'); }
+        else { toast('Error: '+error.message,'error'); }
+        return;
+      }
+      c.vehiculos = c.vehiculos.filter(x=>x.id!==id);
+      c.vehiculoElementos = c.vehiculoElementos.filter(ve=>ve.vehiculo_id!==id);
+      if(c.vehiculoSel===id) c.vehiculoSel=null;
+      state.wizard=null; state.historial=null;
+      drawCatalogo();
+      toast('Vehículo eliminado','success');
+    };
+  });
+  document.querySelectorAll('[data-manage-vehiculo]').forEach(b=>{
+    b.onclick = ()=>{ c.vehiculoSel = (c.vehiculoSel===b.dataset.manageVehiculo)?null:b.dataset.manageVehiculo; drawCatalogo(); };
+  });
+  document.querySelectorAll('[data-toggle-vehiculo-elemento]').forEach(b=>{
+    b.onclick = async ()=>{
+      const elementoId = b.dataset.toggleVehiculoElemento;
+      const vehiculoId = c.vehiculoSel;
+      const existing = c.vehiculoElementos.find(ve=>ve.elemento_id===elementoId && ve.vehiculo_id===vehiculoId);
+      if(existing){
+        await sb.from('mant_vehiculo_elementos').delete().eq('elemento_id',elementoId).eq('vehiculo_id',vehiculoId);
+        c.vehiculoElementos = c.vehiculoElementos.filter(ve=>!(ve.elemento_id===elementoId && ve.vehiculo_id===vehiculoId));
+      } else {
+        await sb.from('mant_vehiculo_elementos').insert({ elemento_id: elementoId, vehiculo_id: vehiculoId });
+        c.vehiculoElementos.push({elemento_id:elementoId, vehiculo_id:vehiculoId});
+      }
+      state.wizard=null;
+      drawCatalogo();
+    };
+  });
+
+  // Extintores
+  const btnAddExtintor = document.getElementById('btn-add-extintor');
+  if(btnAddExtintor) btnAddExtintor.onclick = async ()=>{
+    const numero = document.getElementById('nex-numero').value.trim();
+    const tipo = document.getElementById('nex-tipo').value.trim();
+    const ubicacion = document.getElementById('nex-ubicacion').value.trim();
+    const fecha_fabricacion = document.getElementById('nex-fabricacion').value || null;
+    const fecha_retimbrado = document.getElementById('nex-retimbrado').value || null;
+    if(!numero){ toast('Introduce un número de extintor','error'); return; }
+    const { error } = await sb.from('mant_extintores').insert({ numero, tipo:tipo||null, ubicacion:ubicacion||null, fecha_fabricacion, fecha_retimbrado });
+    if(error){ toast('Error: '+error.message,'error'); return; }
+    c.extintores=null; await ensureCatalogoLoaded(); drawCatalogo();
+    toast('Extintor dado de alta','success');
+  };
+  document.querySelectorAll('[data-toggle-extintor]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.toggleExtintor; const e=c.extintores.find(x=>x.id===id);
+      const { error } = await sb.from('mant_extintores').update({ activo: !e.activo }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      e.activo=!e.activo; state.wizard=null; drawCatalogo();
+    };
+  });
+  document.querySelectorAll('[data-delete-extintor]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.deleteExtintor; const e=c.extintores.find(x=>x.id===id);
+      if(!confirm('¿Eliminar el extintor Nº '+e.numero+'? Esta acción no se puede deshacer.')) return;
+      const { error } = await sb.from('mant_extintores').delete().eq('id', id);
+      if(error){
+        if(error.code==='23503'){ toast('No se puede eliminar: este extintor tiene revisiones guardadas. Márcalo como obsoleto en su lugar.','error'); }
+        else { toast('Error: '+error.message,'error'); }
+        return;
+      }
+      c.extintores = c.extintores.filter(x=>x.id!==id);
+      state.wizard=null; state.historial=null;
+      drawCatalogo();
+      toast('Extintor eliminado','success');
+    };
+  });
+  const btnAddChecklist = document.getElementById('btn-add-checklist');
+  if(btnAddChecklist) btnAddChecklist.onclick = async ()=>{
+    const pregunta = document.getElementById('ncl-pregunta').value.trim();
+    if(!pregunta){ toast('Introduce una pregunta','error'); return; }
+    const { error } = await sb.from('mant_extintor_checklist_items').insert({ pregunta, orden: (c.checklist||[]).length });
+    if(error){ toast('Error: '+error.message,'error'); return; }
+    c.checklist=null; await ensureCatalogoLoaded(); drawCatalogo();
+    toast('Pregunta añadida','success');
+  };
+  document.querySelectorAll('[data-toggle-checklist]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.toggleChecklist; const q=c.checklist.find(x=>x.id===id);
+      const { error } = await sb.from('mant_extintor_checklist_items').update({ activo: !q.activo }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      q.activo=!q.activo; drawCatalogo();
+    };
+  });
+
+  // Stock
+  document.querySelectorAll('[data-reponer]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.reponer;
+      const input = document.getElementById('rep-'+id);
+      const cantidad = parseInt(input.value,10);
+      if(!cantidad || cantidad<1){ toast('Introduce una cantidad válida','error'); return; }
+      const item = c.stockItems.find(x=>x.id===id);
+      const nuevoStock = (item.stock||0) + cantidad;
+      const { error } = await sb.from('mant_tareas').update({ stock: nuevoStock }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      item.stock = nuevoStock;
+      drawCatalogo();
+      toast('Stock repuesto','success');
     };
   });
 }
@@ -1349,27 +2103,57 @@ async function recargarTareas(elementoId){
 async function renderTabAccesos(){
   const el = document.getElementById('tab-content');
   el.innerHTML = '<div class="spinner"></div>';
-  const { data, error } = await sb.from('trabajadores').select('*').order('numero_empleado');
+  const [{data:trabs, error}, {data:permisos}] = await Promise.all([
+    sb.from('trabajadores').select('*').order('numero_empleado'),
+    sb.from('mant_tipos_permisos').select('*'),
+  ]);
   if(error){ el.innerHTML = '<div class="card"><div class="error-box">No se pudo cargar la lista de trabajadores.</div></div>'; return; }
-  state.accesos = data||[];
+  state.accesos = trabs||[];
+  state.accesosPermisos = permisos||[];
   drawAccesos();
 }
 
 function drawAccesos(){
   const el = document.getElementById('tab-content');
   const rows = state.accesos;
-  let html = '<div class="card"><h2>Accesos de trabajadores</h2>';
-  html += '<div class="hint" style="margin-bottom:12px;">Cada trabajador crea su propia contraseña la primera vez que entra con su número de empleado. Si alguien la olvida, puedes restablecer su acceso aquí para que pueda crear una contraseña nueva.</div>';
+  let html = '<div class="card"><h2>Accesos y permisos de trabajadores</h2>';
+  html += '<div class="hint" style="margin-bottom:12px;">Cada trabajador crea su propia contraseña la primera vez que entra con su número de empleado. Usa 🔧 para elegir qué tipos de mantenimiento puede registrar cada uno.</div>';
   html += '<table class="admin-table"><thead><tr><th>Nº</th><th>Nombre</th><th>Estado</th><th>Acceso</th><th></th></tr></thead><tbody>';
   rows.forEach(t=>{
     const tieneAcceso = !!t.auth_user_id;
     html += `<tr><td>${esc(t.numero_empleado)}</td><td>${esc(t.nombre)}</td>
       <td><span class="pill ${t.activo?'on':'off'}">${t.activo?'Activo':'Inactivo'}</span></td>
       <td><span class="pill ${tieneAcceso?'on':'off'}">${tieneAcceso?'Configurado':'Pendiente'}</span></td>
-      <td>${tieneAcceso?`<button class="btn btn-outline btn-sm" data-reset="${t.id}">Restablecer</button>`:''}</td></tr>`;
+      <td>
+        <button class="icon-btn" data-toggle-permisos="${t.id}" title="Tipos de mantenimiento">🔧</button>
+        ${tieneAcceso?`<button class="btn btn-outline btn-sm" data-reset="${t.id}">Restablecer</button>`:''}
+      </td></tr>`;
+    if(state.accesosExpanded===t.id){
+      const misPermisos = state.accesosPermisos.filter(p=>p.trabajador_id===t.id).map(p=>p.tipo);
+      html += `<tr><td colspan="5" style="background:var(--steel-50);"><div class="chip-row" style="padding:10px 0;">`;
+      html += TIPOS_MANTENIMIENTO.map(tm=>`<button class="chip-btn ${misPermisos.includes(tm.code)?'selected':''}" data-toggle-permiso="${t.id}|${tm.code}">${tm.icon} ${esc(tm.label)}</button>`).join('');
+      html += `</div></td></tr>`;
+    }
   });
   html += '</tbody></table></div>';
   el.innerHTML = html;
+  document.querySelectorAll('[data-toggle-permisos]').forEach(b=>{
+    b.onclick = ()=>{ state.accesosExpanded = state.accesosExpanded===b.dataset.togglePermisos ? null : b.dataset.togglePermisos; drawAccesos(); };
+  });
+  document.querySelectorAll('[data-toggle-permiso]').forEach(b=>{
+    b.onclick = async ()=>{
+      const [trabajadorId, tipo] = b.dataset.togglePermiso.split('|');
+      const existing = state.accesosPermisos.find(p=>p.trabajador_id===trabajadorId && p.tipo===tipo);
+      if(existing){
+        await sb.from('mant_tipos_permisos').delete().eq('trabajador_id',trabajadorId).eq('tipo',tipo);
+        state.accesosPermisos = state.accesosPermisos.filter(p=>!(p.trabajador_id===trabajadorId && p.tipo===tipo));
+      } else {
+        await sb.from('mant_tipos_permisos').insert({trabajador_id:trabajadorId, tipo});
+        state.accesosPermisos.push({trabajador_id:trabajadorId, tipo});
+      }
+      drawAccesos();
+    };
+  });
   document.querySelectorAll('[data-reset]').forEach(b=>{
     b.onclick = async ()=>{
       if(!confirm('¿Restablecer el acceso de este trabajador? Tendrá que crear una contraseña nueva en su próximo inicio de sesión.')) return;
@@ -1386,6 +2170,7 @@ function drawAccesos(){
    INIT
    ============================================================ */
 bootstrap();
+
 </script>
 </body>
 </html>
