@@ -222,6 +222,14 @@
   table.admin-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--steel-400);padding:8px 10px;border-bottom:1.5px solid var(--steel-200);}
   table.admin-table td{padding:9px 10px;border-bottom:1px solid var(--steel-100);vertical-align:middle;}
   table.admin-table tr:last-child td{border-bottom:none;}
+  .table-scroll{overflow-x:auto;}
+  .hist-table{font-size:12.5px;}
+  .hist-table th{white-space:nowrap;position:sticky;top:0;background:#fff;}
+  .hist-table td{white-space:nowrap;color:var(--steel-800);}
+  .hist-table td.obs-cell{white-space:normal;max-width:220px;color:var(--steel-600);}
+  .hist-table tbody tr:nth-child(odd){background:var(--steel-50);}
+  .hist-table tbody tr:hover{background:var(--amber-50);}
+  .hist-thumb{width:26px;height:26px;object-fit:cover;border-radius:5px;border:1px solid var(--steel-200);display:block;}
   .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;}
   .pill.on{background:#f0fdf4;color:var(--green);}
   .pill.off{background:var(--steel-100);color:var(--steel-600);}
@@ -914,7 +922,7 @@ function drawHistorial(){
   </div>`;
   html += `<div class="hint" style="margin-bottom:10px;">${rows.length} registro(s)</div>`;
   html += '</div>';
-  html += renderRegistrosList(rows, true);
+  html += `<div class="card" style="padding:0;overflow:hidden;">${renderHistorialTable(rows)}</div>`;
 
   el.innerHTML = html;
   document.getElementById('f-linea').onchange = e=>{ f.linea=e.target.value; drawHistorial(); };
@@ -923,6 +931,37 @@ function drawHistorial(){
   document.getElementById('f-desde').onchange = e=>{ f.desde=e.target.value; drawHistorial(); };
   document.getElementById('f-hasta').onchange = e=>{ f.hasta=e.target.value; drawHistorial(); };
   document.getElementById('btn-export').onclick = ()=> exportCSV(rows);
+}
+
+function renderHistorialTable(rows){
+  if(!rows || rows.length===0) return '<div class="empty-state">No hay registros con estos filtros.</div>';
+  let html = '<div class="table-scroll"><table class="admin-table hist-table"><thead><tr>';
+  html += ['Fecha','Hora','Línea','Tipo','Nº','Operario','Elemento','Tarea','Referencia','Ubicación','Observaciones','Foto'].map(h=>`<th>${h}</th>`).join('');
+  html += '</tr></thead><tbody>';
+  rows.forEach(r=>{
+    const d = new Date(r.ts);
+    const fecha = d.toLocaleDateString('es-ES',{timeZone:'Europe/Madrid'});
+    const hora = d.toLocaleTimeString('es-ES',{timeZone:'Europe/Madrid', hour:'2-digit', minute:'2-digit'});
+    const items = (r.mant_registro_items && r.mant_registro_items.length) ? r.mant_registro_items : [null];
+    items.forEach(it=>{
+      html += `<tr>
+        <td>${fecha}</td>
+        <td>${hora}</td>
+        <td>${esc(r.linea_codigo||'')}</td>
+        <td><span class="badge ${r.tipo}">${esc(r.tipo)}</span></td>
+        <td>${esc(r.numero_empleado||'')}</td>
+        <td>${esc(r.trabajador_nombre||'')}</td>
+        <td>${it?esc(it.elemento_nombre||''):''}</td>
+        <td>${it?esc(it.tarea_nombre||''):'<span class="hint">—</span>'}</td>
+        <td>${it&&it.referencia?esc(it.referencia):''}</td>
+        <td>${it&&it.ubicacion?esc(it.ubicacion):''}</td>
+        <td class="obs-cell">${esc(r.observaciones||'')}</td>
+        <td>${it&&it.foto_url?`<img class="hist-thumb" src="${esc(it.foto_url)}">`:''}</td>
+      </tr>`;
+    });
+  });
+  html += '</tbody></table></div>';
+  return html;
 }
 
 function exportCSV(rows){
@@ -991,7 +1030,10 @@ function drawCatLineas(){
   let html = '<div class="card"><h2>Líneas</h2><table class="admin-table"><thead><tr><th>Código</th><th>Nombre</th><th>Estado</th><th></th></tr></thead><tbody>';
   c.lineas.forEach(l=>{
     html += `<tr><td><b>${esc(l.codigo)}</b></td><td>${esc(l.nombre||'')}</td><td><span class="pill ${l.activo?'on':'off'}">${l.activo?'Activa':'Inactiva'}</span></td>
-    <td><button class="icon-btn" data-toggle-linea="${l.id}" title="${l.activo?'Desactivar':'Activar'}">${l.activo?'⏸':'▶'}</button></td></tr>`;
+    <td>
+      <button class="icon-btn" data-toggle-linea="${l.id}" title="${l.activo?'Desactivar':'Activar'}">${l.activo?'⏸':'▶'}</button>
+      <button class="icon-btn" data-delete-linea="${l.id}" title="Eliminar línea">🗑</button>
+    </td></tr>`;
   });
   html += '</tbody></table>';
   html += `<div class="inline-form">
@@ -1009,7 +1051,10 @@ function drawCatElementos(){
     const lineasAsignadas = c.lineaElementos.filter(le=>le.elemento_id===elemento.id).map(le=> c.lineas.find(l=>l.id===le.linea_id)).filter(Boolean);
     html += `<tr><td><b>${esc(elemento.nombre)}</b></td><td><span class="pill ${elemento.activo?'on':'off'}">${elemento.activo?'Activo':'Inactivo'}</span></td>
       <td>${lineasAsignadas.map(l=>esc(l.codigo)).join(', ')||'<span class="hint">ninguna</span>'}</td>
-      <td><button class="icon-btn" data-manage-elemento="${elemento.id}">⚙</button></td></tr>`;
+      <td>
+        <button class="icon-btn" data-manage-elemento="${elemento.id}" title="Asignar a líneas">⚙</button>
+        <button class="icon-btn" data-delete-elemento="${elemento.id}" title="Eliminar elemento">🗑</button>
+      </td></tr>`;
   });
   html += '</tbody></table>';
   html += `<div class="inline-form">
@@ -1142,6 +1187,24 @@ function bindCatalogoEvents(){
       l.activo = !l.activo; state.wizard=null; drawCatalogo();
     };
   });
+  document.querySelectorAll('[data-delete-linea]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.deleteLinea;
+      const l = c.lineas.find(x=>x.id===id);
+      if(!confirm('¿Eliminar la línea "'+l.codigo+'"? Esta acción no se puede deshacer.')) return;
+      const { error } = await sb.from('mant_lineas').delete().eq('id', id);
+      if(error){
+        if(error.code==='23503'){ toast('No se puede eliminar: esta línea tiene registros de mantenimiento guardados.','error'); }
+        else { toast('Error: '+error.message,'error'); }
+        return;
+      }
+      c.lineas = c.lineas.filter(x=>x.id!==id);
+      c.lineaElementos = c.lineaElementos.filter(le=>le.linea_id!==id);
+      state.wizard=null; state.historial=null;
+      drawCatalogo();
+      toast('Línea eliminada','success');
+    };
+  });
 
   const btnAddElemento = document.getElementById('btn-add-elemento');
   if(btnAddElemento) btnAddElemento.onclick = async ()=>{
@@ -1154,6 +1217,26 @@ function bindCatalogoEvents(){
   };
   document.querySelectorAll('[data-manage-elemento]').forEach(b=>{
     b.onclick = ()=>{ c.elementoSel = (c.elementoSel===b.dataset.manageElemento)? null : b.dataset.manageElemento; drawCatalogo(); };
+  });
+  document.querySelectorAll('[data-delete-elemento]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.deleteElemento;
+      const elemento = c.elementos.find(x=>x.id===id);
+      if(!confirm('¿Eliminar el elemento "'+elemento.nombre+'" y todas sus tareas? Esta acción no se puede deshacer.')) return;
+      const { error } = await sb.from('mant_elementos').delete().eq('id', id);
+      if(error){
+        if(error.code==='23503'){ toast('No se puede eliminar: este elemento tiene tareas con registros de mantenimiento guardados.','error'); }
+        else { toast('Error: '+error.message,'error'); }
+        return;
+      }
+      c.elementos = c.elementos.filter(x=>x.id!==id);
+      c.lineaElementos = c.lineaElementos.filter(le=>le.elemento_id!==id);
+      delete c.tareasPorElemento[id];
+      if(c.elementoSel===id) c.elementoSel=null;
+      state.wizard=null; state.historial=null;
+      drawCatalogo();
+      toast('Elemento eliminado','success');
+    };
   });
   document.querySelectorAll('[data-toggle-asig]').forEach(b=>{
     b.onclick = async ()=>{
