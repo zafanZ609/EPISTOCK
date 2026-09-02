@@ -214,6 +214,14 @@
   .nivel-info{min-width:0;}
   .nivel-card-name{font-size:13.5px;font-weight:700;color:var(--steel-900);}
   .nivel-meta{font-size:11.5px;color:var(--steel-600);margin-top:1px;}
+  .nivel-card.leaf-wrap{flex-direction:column;align-items:stretch;padding:4px;gap:0;cursor:default;}
+  .nivel-card.leaf-wrap:hover{border-color:var(--steel-200);}
+  .nivel-card.leaf-wrap.selected{border-color:var(--amber);background:var(--amber-50);}
+  .leaf-toggle{display:flex;align-items:center;gap:10px;padding:8px 8px;cursor:pointer;width:100%;}
+  .leaf-toggle input{width:17px;height:17px;accent-color:var(--amber-dark);flex-shrink:0;}
+  .leaf-toggle .nivel-card-name{flex:1;}
+  .repuesto-subpicker{padding:2px 8px 8px 32px;display:flex;flex-direction:column;gap:8px;}
+  .repuesto-hint{font-size:11.5px;color:var(--steel-500);margin:0 0 2px 32px;}
 
   .selected-summary{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px;}
   .sel-chip{background:var(--steel-900);color:#fff;font-size:12px;font-weight:600;padding:6px 8px 6px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;}
@@ -352,7 +360,7 @@ const state = {
     lineas:null, elementos:null, lineaElementos:null, tareasPorElemento:{}, elementoSel:null, editingTareaId:null, addingSubTo:null,
     vehiculos:null, vehiculoElementos:null, vehiculoSel:null,
     extintores:null, checklist:null,
-    stockItems:null,
+    repuestos:null, tareaRepuestos:null, repuestoEditId:null,
   },
   accesos:null,
   accesosPermisos:null,
@@ -762,12 +770,22 @@ async function ensureElementoTree(elementoId){
   if(w.treeCache[elementoId]) return;
   const elemento = w.elementos.find(e=>e.id===elementoId);
   const { data:tareas } = await sb.from('mant_tareas').select('*').eq('elemento_id', elementoId).eq('activo', true).order('orden');
-  w.treeCache[elementoId] = buildTareaTree(tareas||[], elemento);
+  const tareaIds = (tareas||[]).map(t=>t.id);
+  const repuestosPorTarea = {};
+  if(tareaIds.length){
+    const { data:links } = await sb.from('mant_tarea_repuestos').select('tarea_id, mant_repuestos(*)').in('tarea_id', tareaIds);
+    (links||[]).forEach(l=>{
+      if(!l.mant_repuestos || l.mant_repuestos.activo===false) return;
+      (repuestosPorTarea[l.tarea_id] = repuestosPorTarea[l.tarea_id] || []).push(l.mant_repuestos);
+    });
+  }
+  w.treeCache[elementoId] = buildTareaTree(tareas||[], elemento, repuestosPorTarea);
 }
 
-function buildTareaTree(tareas, elemento){
+function buildTareaTree(tareas, elemento, repuestosPorTarea){
+  repuestosPorTarea = repuestosPorTarea || {};
   const byId = {};
-  tareas.forEach(t=> byId[t.id] = Object.assign({}, t, {children:[]}));
+  tareas.forEach(t=> byId[t.id] = Object.assign({}, t, {children:[], repuestos: repuestosPorTarea[t.id] || []}));
   const roots = [];
   tareas.forEach(t=>{
     if(t.parent_id && byId[t.parent_id]){ byId[t.parent_id].children.push(byId[t.id]); }
@@ -782,9 +800,7 @@ function buildTareaTree(tareas, elemento){
         elemento_nombre: elemento.nombre,
         tarea_nombre: path.join(' › '),
         tarea_id: node.id,
-        referencia: node.referencia || null,
-        ubicacion: node.ubicacion || null,
-        foto_url: node.foto_url || null,
+        repuestos: node.repuestos || [],
       };
     } else {
       node.children.forEach(c=> walk(c, path));
@@ -837,7 +853,11 @@ function drawTipoRepYElemento(w){
 
   if(w.selected.size>0){
     html += '<div class="section-title" style="margin-top:18px;">Seleccionado para este registro</div><div class="selected-summary">';
-    for(const [tid, info] of w.selected){ html += `<span class="sel-chip">${esc(info.tarea_nombre)}<button data-remove="${tid}">✕</button></span>`; }
+    for(const [tid, info] of w.selected){
+      const repCount = info.repuestoIds ? info.repuestoIds.size : 0;
+      const label = info.tarea_nombre + (repCount>0 ? ` · ${repCount} repuesto${repCount>1?'s':''}` : '');
+      html += `<span class="sel-chip">${esc(label)}<button data-remove="${tid}">✕</button></span>`;
+    }
     html += '</div>';
   }
 
@@ -873,18 +893,34 @@ function renderNivelBrowser(w, cache, elementoNombre){
           ${n.pdf_url?`<a class="pdf-btn" href="${esc(n.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Ver instrucciones / plano">📄 PDF</a>`:''}
         </div>`;
       } else {
-        const checked = w.selected.has(n.id);
-        const stockBadge = (n.stock!==null && n.stock!==undefined) ? `<span class="stock-badge ${n.stock<=0?'zero':n.stock<=2?'low':''}">Stock: ${n.stock}</span>` : '';
-        html += `<label class="nivel-card leaf ${checked?'selected':''}">
-          <input type="checkbox" data-tarea="${n.id}" ${checked?'checked':''}>
-          ${n.foto_url?`<img class="nivel-photo" src="${esc(n.foto_url)}">`:'<div class="nivel-photo ph">🔧</div>'}
-          <div class="nivel-info">
-            <div class="nivel-card-name">${esc(n.nombre)}</div>
-            ${n.referencia?`<div class="nivel-meta">Ref: ${esc(n.referencia)}</div>`:''}
-            ${n.ubicacion?`<div class="nivel-meta">📍 ${esc(n.ubicacion)}</div>`:''}
-            ${stockBadge}
-          </div>
-        </label>`;
+        const sel = w.selected.get(n.id);
+        const checked = !!sel;
+        const repuestos = n.repuestos || [];
+        html += `<div class="nivel-card leaf-wrap ${checked?'selected':''}">
+          <label class="leaf-toggle">
+            <input type="checkbox" data-tarea="${n.id}" ${checked?'checked':''}>
+            <span class="nivel-card-name">${esc(n.nombre)}</span>
+          </label>
+          ${n.pdf_url?`<a class="pdf-btn" style="margin:0 8px 6px 32px;align-self:flex-start;" href="${esc(n.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Ver instrucciones / plano">📄 PDF</a>`:''}`;
+        if(checked && repuestos.length>0){
+          html += `<div class="repuesto-hint">Repuestos usados en esta tarea (opcional):</div><div class="repuesto-subpicker">`;
+          repuestos.forEach(r=>{
+            const rChecked = sel.repuestoIds && sel.repuestoIds.has(r.id);
+            const stockBadge = (r.stock!==null && r.stock!==undefined) ? `<span class="stock-badge ${r.stock<=0?'zero':r.stock<=2?'low':''}">Stock: ${r.stock}</span>` : '';
+            html += `<label class="nivel-card leaf ${rChecked?'selected':''}">
+              <input type="checkbox" data-repuesto="${n.id}|${r.id}" ${rChecked?'checked':''}>
+              ${r.foto_url?`<img class="nivel-photo" src="${esc(r.foto_url)}">`:'<div class="nivel-photo ph">🔩</div>'}
+              <div class="nivel-info">
+                <div class="nivel-card-name">${esc(r.referencia)}</div>
+                ${r.descripcion?`<div class="nivel-meta">${esc(r.descripcion)}</div>`:''}
+                ${r.ubicacion?`<div class="nivel-meta">📍 ${esc(r.ubicacion)}</div>`:''}
+                ${stockBadge}
+              </div>
+            </label>`;
+          });
+          html += '</div>';
+        }
+        html += '</div>';
       }
     });
     html += '</div>';
@@ -912,10 +948,20 @@ function bindTipoRepYElementoEvents(w){
   document.querySelectorAll('[data-drill]').forEach(btn=>{
     btn.onclick = ()=>{ w.navStack.push(btn.dataset.drill); drawWizard(); };
   });
-  document.querySelectorAll('.nivel-card.leaf input').forEach(cb=>{
+  document.querySelectorAll('.leaf-toggle input[data-tarea]').forEach(cb=>{
     cb.onchange = ()=>{
       const tid=cb.dataset.tarea; const cache=w.treeCache[w.elementoId];
-      if(cb.checked){ w.selected.set(tid, cache.tareaIndex[tid]); } else { w.selected.delete(tid); }
+      if(cb.checked){ w.selected.set(tid, Object.assign({}, cache.tareaIndex[tid], {repuestoIds:new Set()})); } else { w.selected.delete(tid); }
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('input[data-repuesto]').forEach(cb=>{
+    cb.onchange = ()=>{
+      const [tid, rid] = cb.dataset.repuesto.split('|');
+      const sel = w.selected.get(tid);
+      if(!sel) return;
+      if(!sel.repuestoIds) sel.repuestoIds = new Set();
+      if(cb.checked){ sel.repuestoIds.add(rid); } else { sel.repuestoIds.delete(rid); }
       drawWizard();
     };
   });
@@ -954,10 +1000,21 @@ async function guardarRegistroArbol(){
   const btn = document.getElementById('btn-guardar-arbol');
   btn.disabled = true; btn.textContent = 'Guardando…';
   const ambitoObj = (w.ambitos||[]).find(a=>a.id===w.ambitoId);
-  const items = Array.from(w.selected.values()).map(it=>({
-    tarea_id: it.tarea_id, elemento_nombre: it.elemento_nombre, tarea_nombre: it.tarea_nombre,
-    referencia: it.referencia, ubicacion: it.ubicacion, foto_url: it.foto_url,
-  }));
+  const items = [];
+  for(const it of w.selected.values()){
+    const repIds = it.repuestoIds && it.repuestoIds.size ? Array.from(it.repuestoIds) : [];
+    if(repIds.length===0){
+      items.push({ tarea_id: it.tarea_id, elemento_nombre: it.elemento_nombre, tarea_nombre: it.tarea_nombre, repuesto_id:null, referencia:null, ubicacion:null, foto_url:null, descripcion:null });
+    } else {
+      repIds.forEach(rid=>{
+        const r = (it.repuestos||[]).find(x=>x.id===rid);
+        items.push({
+          tarea_id: it.tarea_id, elemento_nombre: it.elemento_nombre, tarea_nombre: it.tarea_nombre,
+          repuesto_id: rid, referencia: r?r.referencia:null, ubicacion: r?r.ubicacion:null, foto_url: r?r.foto_url:null, descripcion: r?r.descripcion:null,
+        });
+      });
+    }
+  }
   try{
     const { error } = await sb.rpc('registrar_mantenimiento_linea_vehiculo', {
       p_ambito: w.ambito,
@@ -1330,6 +1387,7 @@ async function loadAllEventos(scopeTrabajadorId){
         referencia: it?(it.referencia||''):'', ubicacion: it?(it.ubicacion||''):'',
         observaciones: r.observaciones||'',
         adjuntoUrl: it?(it.foto_url||''):'', adjuntoTipo: it&&it.foto_url?'foto':'',
+        sourceTable:'mant_registros', sourceId:r.id,
       });
     });
   });
@@ -1350,6 +1408,7 @@ async function loadAllEventos(scopeTrabajadorId){
       detalle, referencia:'', ubicacion:'',
       observaciones: r.observaciones||'',
       adjuntoUrl: r.pdf_url||'', adjuntoTipo: r.pdf_url?'pdf':'',
+      sourceTable:'mant_extintor_revisiones', sourceId:r.id,
     });
   });
   (simple||[]).forEach(r=>{
@@ -1366,6 +1425,7 @@ async function loadAllEventos(scopeTrabajadorId){
       detalle: r.descripcion||'', referencia:'', ubicacion:'',
       observaciones:'',
       adjuntoUrl: r.pdf_url||'', adjuntoTipo: r.pdf_url?'pdf':'',
+      sourceTable:'mant_registros_simple', sourceId:r.id,
     });
   });
   rows.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
@@ -1444,12 +1504,15 @@ function drawHistorial(){
   document.getElementById('f-desde').onchange = e=>{ f.desde=e.target.value; drawHistorial(); };
   document.getElementById('f-hasta').onchange = e=>{ f.hasta=e.target.value; drawHistorial(); };
   document.getElementById('btn-export').onclick = ()=> exportCSV(rows);
+  document.querySelectorAll('[data-delete-evento]').forEach(b=>{
+    b.onclick = ()=>{ const [sourceTable, id] = b.dataset.deleteEvento.split('|'); borrarEventoHistorial(sourceTable, id); };
+  });
 }
 
 function renderHistorialTable(rows){
   if(!rows || rows.length===0) return '<div class="empty-state">No hay registros con estos filtros.</div>';
   let html = '<div class="table-scroll"><table class="admin-table hist-table"><thead><tr>';
-  html += ['Fecha','Hora','Tipo','Referencia','Subtipo','Nº','Operario','Detalle','Ref. repuesto','Ubicación','Observaciones','Adjunto'].map(h=>`<th>${h}</th>`).join('');
+  html += ['Fecha','Hora','Tipo','Referencia','Subtipo','Nº','Operario','Detalle','Ref. repuesto','Ubicación','Observaciones','Adjunto',''].map(h=>`<th>${h}</th>`).join('');
   html += '</tr></thead><tbody>';
   rows.forEach(r=>{
     const d = new Date(r.ts);
@@ -1467,10 +1530,26 @@ function renderHistorialTable(rows){
       <td>${esc(r.ubicacion||'')}</td>
       <td class="obs-cell">${esc(r.observaciones||'')}</td>
       <td>${r.adjuntoUrl?(r.adjuntoTipo==='foto'?`<img class="hist-thumb" src="${esc(r.adjuntoUrl)}">`:`<a class="pdf-btn" href="${esc(r.adjuntoUrl)}" target="_blank" rel="noopener">📄</a>`):''}</td>
+      <td>${r.sourceTable&&r.sourceId?`<button class="icon-btn" data-delete-evento="${r.sourceTable}|${r.sourceId}" title="Eliminar registro">🗑</button>`:''}</td>
     </tr>`;
   });
   html += '</tbody></table></div>';
   return html;
+}
+
+async function borrarEventoHistorial(sourceTable, id){
+  const h = state.historial;
+  const relacionadas = h.all.filter(r=>r.sourceTable===sourceTable && r.sourceId===id).length;
+  const msg = relacionadas>1
+    ? `¿Eliminar este registro completo? Incluye ${relacionadas} líneas (tareas/repuestos) y no se puede deshacer.`
+    : '¿Eliminar este registro? Esta acción no se puede deshacer.';
+  if(!confirm(msg)) return;
+  const { error } = await sb.from(sourceTable).delete().eq('id', id);
+  if(error){ toast('Error al eliminar: '+error.message, 'error'); return; }
+  h.all = h.all.filter(r=>!(r.sourceTable===sourceTable && r.sourceId===id));
+  state.misRegistros = null;
+  drawHistorial();
+  toast('Registro eliminado','success');
 }
 
 function exportCSV(rows){
@@ -1510,16 +1589,14 @@ async function ensureCatalogoLoaded(){
   if(c.vehiculoElementos===null){ const { data } = await sb.from('mant_vehiculo_elementos').select('*'); c.vehiculoElementos = data||[]; }
   if(c.extintores===null){ const { data } = await sb.from('mant_extintores').select('*').order('numero'); c.extintores = data||[]; }
   if(c.checklist===null){ const { data } = await sb.from('mant_extintor_checklist_items').select('*').order('orden'); c.checklist = data||[]; }
-  if(c.stockItems===null){
-    const { data } = await sb.from('mant_tareas').select('id,nombre,stock,elemento_id,mant_elementos(nombre)').not('stock','is',null).order('nombre');
-    c.stockItems = (data||[]).map(t=>({ id:t.id, nombre:t.nombre, stock:t.stock, elemento_nombre: t.mant_elementos?t.mant_elementos.nombre:'' }));
-  }
+  if(c.repuestos===null){ const { data } = await sb.from('mant_repuestos').select('*').order('referencia'); c.repuestos = data||[]; }
+  if(c.tareaRepuestos===null){ const { data } = await sb.from('mant_tarea_repuestos').select('*'); c.tareaRepuestos = data||[]; }
 }
 
 function drawCatalogo(){
   const el = document.getElementById('tab-content');
   const c = state.catalogo;
-  const catLabels = {lineas:'Líneas', elementos:'Elementos', tareas:'Árbol de tareas', vehiculos:'Vehículos', extintores:'Extintores', stock:'Stock'};
+  const catLabels = {lineas:'Líneas', elementos:'Elementos', tareas:'Árbol de tareas', vehiculos:'Vehículos', extintores:'Extintores', repuestos:'Repuestos'};
   let html = '<div class="subtabs">';
   html += Object.keys(catLabels).map(k=>`<button data-ctab="${k}" class="${state.catalogoTab===k?'active':''}">${catLabels[k]}</button>`).join('');
   html += '</div>';
@@ -1528,7 +1605,7 @@ function drawCatalogo(){
   else if(state.catalogoTab==='tareas') html += drawCatTareas();
   else if(state.catalogoTab==='vehiculos') html += drawCatVehiculos();
   else if(state.catalogoTab==='extintores') html += drawCatExtintores();
-  else html += drawCatStock();
+  else html += drawCatRepuestos();
   el.innerHTML = html;
   bindCatalogoEvents();
 }
@@ -1625,12 +1702,12 @@ function renderAdminTareaNodes(nodes){
   let html = '';
   nodes.forEach(n=>{
     const editing = c.editingTareaId===n.id;
+    const reps = (c.tareaRepuestos||[]).filter(tr=>tr.tarea_id===n.id)
+      .map(tr=>(c.repuestos||[]).find(r=>r.id===tr.repuesto_id)).filter(Boolean);
     html += `<div class="tree-node">
       <div class="tree-row">
         <span class="name">${esc(n.nombre)}${!n.activo?' <span class="pill off">inactiva</span>':''}</span>
-        ${n.referencia?`<span class="meta">Ref: ${esc(n.referencia)}</span>`:''}
-        ${(n.stock!==null && n.stock!==undefined)?`<span class="stock-badge ${n.stock<=0?'zero':n.stock<=2?'low':''}">Stock: ${n.stock}</span>`:''}
-        ${n.foto_url?`<img class="thumb-preview" src="${esc(n.foto_url)}">`:''}
+        ${reps.map(r=>`<span class="meta">🔩 ${esc(r.referencia)}</span>`).join('')}
         ${n.pdf_url?`<a class="pdf-btn" href="${esc(n.pdf_url)}" target="_blank" rel="noopener">📄</a>`:''}
         <button class="icon-btn" data-edit-tarea="${n.id}" title="Editar">✎</button>
         <button class="icon-btn" data-add-sub="${n.id}" title="Añadir subtarea">+</button>
@@ -1644,22 +1721,23 @@ function renderAdminTareaNodes(nodes){
 }
 
 function renderTareaEditBox(n){
+  const c = state.catalogo;
+  const linkedIds = new Set((c.tareaRepuestos||[]).filter(tr=>tr.tarea_id===n.id).map(tr=>tr.repuesto_id));
+  const repuestosActivos = (c.repuestos||[]).filter(r=>r.activo);
   return `<div class="task-edit-box">
     <div class="row">
       <input id="et-nombre" value="${esc(n.nombre)}" placeholder="Nombre">
-      <input id="et-referencia" value="${esc(n.referencia||'')}" placeholder="Referencia">
-      <input id="et-ubicacion" value="${esc(n.ubicacion||'')}" placeholder="Ubicación">
-      <input id="et-stock" type="number" min="0" value="${(n.stock!==null && n.stock!==undefined) ? n.stock : ''}" placeholder="Stock (repuestos)">
-    </div>
-    <div class="row" style="align-items:center;">
-      <label class="hint" style="width:100%;">Foto (para repuestos, siempre visible)</label>
-      <input id="et-foto" type="file" accept="image/*">
-      ${n.foto_url?`<img class="thumb-preview" src="${esc(n.foto_url)}">`:''}
     </div>
     <div class="row" style="align-items:center;">
       <label class="hint" style="width:100%;">PDF (instrucciones / plano / despiece, para tipo de reparación)</label>
       <input id="et-pdf" type="file" accept="application/pdf">
       ${n.pdf_url?`<a class="pdf-btn" href="${esc(n.pdf_url)}" target="_blank" rel="noopener">📄 Ver PDF actual</a>`:''}
+    </div>
+    <div class="row" style="flex-direction:column;align-items:stretch;">
+      <label class="hint" style="width:100%;margin-bottom:6px;">Repuestos necesarios para esta tarea (créalos y edítalos desde la pestaña "Repuestos")</label>
+      ${repuestosActivos.length===0
+        ? '<div class="hint">Todavía no hay repuestos en el catálogo.</div>'
+        : `<div class="chip-row">${repuestosActivos.map(r=>`<button class="chip-btn ${linkedIds.has(r.id)?'selected':''}" data-toggle-tarea-repuesto="${n.id}|${r.id}">${esc(r.referencia)}</button>`).join('')}</div>`}
     </div>
     <div class="row">
       <button class="btn btn-primary btn-sm" data-save-tarea="${n.id}">Guardar</button>
@@ -1750,30 +1828,74 @@ function drawCatExtintores(){
   return html;
 }
 
-function drawCatStock(){
+function drawCatRepuestos(){
   const c = state.catalogo;
-  let html = '<div class="card"><h2>Stock de repuestos</h2>';
-  html += '<div class="hint" style="margin-bottom:12px;">El stock baja automáticamente cuando un operario registra el uso de un repuesto. Usa "Reponer" para añadir unidades cuando llegue material nuevo.</div>';
-  if(c.stockItems===null){ html += '<div class="spinner"></div></div>'; return html; }
-  if(c.stockItems.length===0){ html += '<div class="empty-state">Todavía no hay repuestos con stock configurado. Asígnalo desde el árbol de tareas.</div></div>'; return html; }
-  html += '<table class="admin-table"><thead><tr><th>Elemento</th><th>Repuesto</th><th>Stock actual</th><th>Reponer</th></tr></thead><tbody>';
-  c.stockItems.forEach(t=>{
-    const low = t.stock<=2;
-    html += `<tr><td>${esc(t.elemento_nombre)}</td><td>${esc(t.nombre)}</td>
-      <td><span class="stock-badge ${t.stock<=0?'zero':low?'low':''}">${t.stock}</span></td>
-      <td><div style="display:flex;gap:6px;align-items:center;">
-        <input type="number" min="1" value="1" id="rep-${t.id}" style="width:60px;padding:6px 8px;border:1.5px solid var(--steel-200);border-radius:7px;font-size:12.5px;">
-        <button class="btn btn-outline btn-sm" data-reponer="${t.id}">+ Reponer</button>
-      </div></td></tr>`;
-  });
-  html += '</tbody></table></div>';
+  let html = '<div class="card"><h2>Repuestos</h2>';
+  html += '<div class="hint" style="margin-bottom:12px;">Catálogo único de repuestos. Cada repuesto se asocia a una o varias tareas desde el árbol de tareas (así se evitan duplicados si un repuesto se usa en más de un sitio), y su stock baja automáticamente cuando un operario registra su uso. Usa "Reponer" para añadir unidades cuando llegue material nuevo.</div>';
+  if(c.repuestos===null){ html += '<div class="spinner"></div></div>'; return html; }
+  if(c.repuestos.length===0){ html += '<div class="empty-state">Todavía no hay repuestos. Añade el primero abajo.</div>'; }
+  else {
+    html += '<table class="admin-table"><thead><tr><th></th><th>Referencia</th><th>Descripción</th><th>Ubicación</th><th>Stock</th><th>Estado</th><th></th></tr></thead><tbody>';
+    c.repuestos.forEach(r=>{
+      const editing = c.repuestoEditId===r.id;
+      const hasStock = r.stock!==null && r.stock!==undefined;
+      html += `<tr>
+        <td>${r.foto_url?`<img class="thumb-preview" src="${esc(r.foto_url)}">`:''}</td>
+        <td><b>${esc(r.referencia)}</b></td>
+        <td>${esc(r.descripcion||'')}</td>
+        <td>${esc(r.ubicacion||'')}</td>
+        <td>${hasStock?`<div style="display:flex;gap:6px;align-items:center;">
+            <span class="stock-badge ${r.stock<=0?'zero':r.stock<=2?'low':''}">${r.stock}</span>
+            <input type="number" min="1" value="1" id="rep-${r.id}" style="width:52px;padding:5px 6px;border:1.5px solid var(--steel-200);border-radius:7px;font-size:12px;">
+            <button class="btn btn-outline btn-sm" data-reponer="${r.id}">+Reponer</button>
+          </div>` : '<span class="hint">— (sin stock)</span>'}</td>
+        <td><span class="pill ${r.activo?'on':'off'}">${r.activo?'Activo':'Inactivo'}</span></td>
+        <td>
+          <button class="icon-btn" data-edit-repuesto="${r.id}" title="Editar">✎</button>
+          <button class="icon-btn" data-toggle-repuesto="${r.id}" title="${r.activo?'Desactivar':'Activar'}">${r.activo?'⏸':'▶'}</button>
+          <button class="icon-btn" data-delete-repuesto="${r.id}" title="Eliminar">🗑</button>
+        </td>
+      </tr>`;
+      if(editing) html += `<tr><td colspan="7" style="padding:0;">${renderRepuestoEditBox(r)}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  }
+  html += `<div class="inline-form">
+    <div class="field"><label>Referencia</label><input id="nr-referencia" placeholder="Ej. ROD-6205"></div>
+    <div class="field"><label>Descripción</label><input id="nr-descripcion" placeholder="Ej. Rodamiento 6205"></div>
+    <div class="field"><label>Ubicación</label><input id="nr-ubicacion" placeholder="Ej. Almacén, estante 3"></div>
+    <div class="field"><label>Stock inicial</label><input id="nr-stock" type="number" min="0" placeholder="Opcional"></div>
+    <div class="field"><label>Foto</label><input id="nr-foto" type="file" accept="image/*"></div>
+    <button class="btn btn-primary btn-sm" id="btn-add-repuesto">+ Añadir repuesto</button>
+  </div>`;
+  html += '</div>';
   return html;
+}
+
+function renderRepuestoEditBox(r){
+  return `<div class="task-edit-box">
+    <div class="row">
+      <input id="er-referencia" value="${esc(r.referencia)}" placeholder="Referencia">
+      <input id="er-descripcion" value="${esc(r.descripcion||'')}" placeholder="Descripción">
+      <input id="er-ubicacion" value="${esc(r.ubicacion||'')}" placeholder="Ubicación">
+      <input id="er-stock" type="number" min="0" value="${(r.stock!==null && r.stock!==undefined) ? r.stock : ''}" placeholder="Stock">
+    </div>
+    <div class="row" style="align-items:center;">
+      <label class="hint" style="width:100%;">Foto (siempre visible para el operario)</label>
+      <input id="er-foto" type="file" accept="image/*">
+      ${r.foto_url?`<img class="thumb-preview" src="${esc(r.foto_url)}">`:''}
+    </div>
+    <div class="row">
+      <button class="btn btn-primary btn-sm" data-save-repuesto="${r.id}">Guardar</button>
+      <button class="btn btn-outline btn-sm" data-cancel-edit-repuesto="1">Cancelar</button>
+    </div>
+  </div>`;
 }
 
 function bindCatalogoEvents(){
   const c = state.catalogo;
   document.querySelectorAll('[data-ctab]').forEach(b=>{
-    b.onclick = ()=>{ state.catalogoTab = b.dataset.ctab; c.elementoSel=null; c.editingTareaId=null; c.addingSubTo=null; c.vehiculoSel=null; drawCatalogo(); };
+    b.onclick = ()=>{ state.catalogoTab = b.dataset.ctab; c.elementoSel=null; c.editingTareaId=null; c.addingSubTo=null; c.vehiculoSel=null; c.repuestoEditId=null; drawCatalogo(); };
   });
 
   const btnAddLinea = document.getElementById('btn-add-linea');
@@ -1843,7 +1965,7 @@ function bindCatalogoEvents(){
       c.vehiculoElementos = (c.vehiculoElementos||[]).filter(ve=>ve.elemento_id!==id);
       delete c.tareasPorElemento[id];
       if(c.elementoSel===id) c.elementoSel=null;
-      state.wizard=null; state.historial=null; c.stockItems=null;
+      state.wizard=null; state.historial=null;
       drawCatalogo();
       toast('Elemento eliminado','success');
     };
@@ -1911,22 +2033,9 @@ function bindCatalogoEvents(){
     b.onclick = async ()=>{
       const id = b.dataset.saveTarea;
       const nombre = document.getElementById('et-nombre').value.trim();
-      const referencia = document.getElementById('et-referencia').value.trim();
-      const ubicacion = document.getElementById('et-ubicacion').value.trim();
-      const stockRaw = document.getElementById('et-stock').value;
-      const fotoInput = document.getElementById('et-foto');
       const pdfInput = document.getElementById('et-pdf');
-      let foto_url, pdf_url;
+      let pdf_url;
       b.disabled = true; b.textContent='Guardando…';
-      if(fotoInput.files && fotoInput.files[0]){
-        const file = fotoInput.files[0];
-        const ext = (file.name.split('.').pop()||'jpg');
-        const path = 'componentes/'+id+'-'+Date.now()+'.'+ext;
-        const { error:upErr } = await sb.storage.from('mant-fotos').upload(path, file, { upsert:true });
-        if(upErr){ toast('Error subiendo foto: '+upErr.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
-        const { data:pub } = sb.storage.from('mant-fotos').getPublicUrl(path);
-        foto_url = pub.publicUrl;
-      }
       if(pdfInput.files && pdfInput.files[0]){
         const file = pdfInput.files[0];
         const path = 'tareas/'+id+'-'+Date.now()+'.pdf';
@@ -1935,15 +2044,29 @@ function bindCatalogoEvents(){
         const { data:pub } = sb.storage.from('mant-pdfs').getPublicUrl(path);
         pdf_url = pub.publicUrl;
       }
-      const payload = { nombre, referencia: referencia||null, ubicacion: ubicacion||null, stock: stockRaw===''?null:parseInt(stockRaw,10) };
-      if(foto_url) payload.foto_url = foto_url;
+      const payload = { nombre };
       if(pdf_url) payload.pdf_url = pdf_url;
       const { error } = await sb.from('mant_tareas').update(payload).eq('id', id);
       if(error){ toast('Error: '+error.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
       c.editingTareaId=null;
       await recargarTareas(c.elementoSel);
-      c.stockItems=null;
       toast('Tarea actualizada','success');
+    };
+  });
+  document.querySelectorAll('[data-toggle-tarea-repuesto]').forEach(b=>{
+    b.onclick = async ()=>{
+      const [tareaId, repuestoId] = b.dataset.toggleTareaRepuesto.split('|');
+      const existing = (c.tareaRepuestos||[]).find(tr=>tr.tarea_id===tareaId && tr.repuesto_id===repuestoId);
+      if(existing){
+        await sb.from('mant_tarea_repuestos').delete().eq('tarea_id',tareaId).eq('repuesto_id',repuestoId);
+        c.tareaRepuestos = c.tareaRepuestos.filter(tr=>!(tr.tarea_id===tareaId && tr.repuesto_id===repuestoId));
+      } else {
+        const { data, error } = await sb.from('mant_tarea_repuestos').insert({ tarea_id: tareaId, repuesto_id: repuestoId }).select().single();
+        if(error){ toast('Error: '+error.message,'error'); return; }
+        c.tareaRepuestos.push({ id:data.id, tarea_id:tareaId, repuesto_id:repuestoId });
+      }
+      state.wizard=null;
+      drawCatalogo();
     };
   });
   document.querySelectorAll('[data-toggle-tarea]').forEach(b=>{
@@ -2073,16 +2196,100 @@ function bindCatalogoEvents(){
     };
   });
 
-  // Stock
+  // Repuestos
+  const btnAddRepuesto = document.getElementById('btn-add-repuesto');
+  if(btnAddRepuesto) btnAddRepuesto.onclick = async ()=>{
+    const referencia = document.getElementById('nr-referencia').value.trim();
+    const descripcion = document.getElementById('nr-descripcion').value.trim();
+    const ubicacion = document.getElementById('nr-ubicacion').value.trim();
+    const stockRaw = document.getElementById('nr-stock').value;
+    const fotoInput = document.getElementById('nr-foto');
+    if(!referencia){ toast('Introduce una referencia','error'); return; }
+    btnAddRepuesto.disabled = true; btnAddRepuesto.textContent='Guardando…';
+    let foto_url = null;
+    if(fotoInput.files && fotoInput.files[0]){
+      const file = fotoInput.files[0];
+      const ext = (file.name.split('.').pop()||'jpg');
+      const path = 'repuestos/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
+      const { error:upErr } = await sb.storage.from('mant-fotos').upload(path, file);
+      if(upErr){ toast('Error subiendo foto: '+upErr.message,'error'); btnAddRepuesto.disabled=false; btnAddRepuesto.textContent='+ Añadir repuesto'; return; }
+      const { data:pub } = sb.storage.from('mant-fotos').getPublicUrl(path);
+      foto_url = pub.publicUrl;
+    }
+    const { error } = await sb.from('mant_repuestos').insert({
+      referencia, descripcion: descripcion||null, ubicacion: ubicacion||null,
+      stock: stockRaw===''?null:parseInt(stockRaw,10), foto_url,
+    });
+    if(error){ toast('Error: '+error.message,'error'); btnAddRepuesto.disabled=false; btnAddRepuesto.textContent='+ Añadir repuesto'; return; }
+    c.repuestos=null; await ensureCatalogoLoaded(); drawCatalogo();
+    toast('Repuesto añadido','success');
+  };
+  document.querySelectorAll('[data-edit-repuesto]').forEach(b=>{
+    b.onclick = ()=>{ c.repuestoEditId = (c.repuestoEditId===b.dataset.editRepuesto)?null:b.dataset.editRepuesto; drawCatalogo(); };
+  });
+  document.querySelectorAll('[data-cancel-edit-repuesto]').forEach(b=>{ b.onclick=()=>{ c.repuestoEditId=null; drawCatalogo(); }; });
+  document.querySelectorAll('[data-save-repuesto]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.saveRepuesto;
+      const referencia = document.getElementById('er-referencia').value.trim();
+      const descripcion = document.getElementById('er-descripcion').value.trim();
+      const ubicacion = document.getElementById('er-ubicacion').value.trim();
+      const stockRaw = document.getElementById('er-stock').value;
+      const fotoInput = document.getElementById('er-foto');
+      if(!referencia){ toast('Introduce una referencia','error'); return; }
+      b.disabled = true; b.textContent='Guardando…';
+      let foto_url;
+      if(fotoInput.files && fotoInput.files[0]){
+        const file = fotoInput.files[0];
+        const ext = (file.name.split('.').pop()||'jpg');
+        const path = 'repuestos/'+id+'-'+Date.now()+'.'+ext;
+        const { error:upErr } = await sb.storage.from('mant-fotos').upload(path, file, { upsert:true });
+        if(upErr){ toast('Error subiendo foto: '+upErr.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
+        const { data:pub } = sb.storage.from('mant-fotos').getPublicUrl(path);
+        foto_url = pub.publicUrl;
+      }
+      const payload = { referencia, descripcion: descripcion||null, ubicacion: ubicacion||null, stock: stockRaw===''?null:parseInt(stockRaw,10) };
+      if(foto_url) payload.foto_url = foto_url;
+      const { error } = await sb.from('mant_repuestos').update(payload).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
+      c.repuestoEditId=null; c.repuestos=null; await ensureCatalogoLoaded(); drawCatalogo();
+      toast('Repuesto actualizado','success');
+    };
+  });
+  document.querySelectorAll('[data-toggle-repuesto]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.toggleRepuesto; const r=c.repuestos.find(x=>x.id===id);
+      const { error } = await sb.from('mant_repuestos').update({ activo: !r.activo }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      r.activo=!r.activo; state.wizard=null; drawCatalogo();
+    };
+  });
+  document.querySelectorAll('[data-delete-repuesto]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.deleteRepuesto; const r=c.repuestos.find(x=>x.id===id);
+      if(!confirm('¿Eliminar el repuesto "'+r.referencia+'"? Esta acción no se puede deshacer.')) return;
+      const { error } = await sb.from('mant_repuestos').delete().eq('id', id);
+      if(error){
+        if(error.code==='23503'){ toast('No se puede eliminar: este repuesto tiene registros de mantenimiento guardados. Desactívalo en su lugar.','error'); }
+        else { toast('Error: '+error.message,'error'); }
+        return;
+      }
+      c.repuestos = c.repuestos.filter(x=>x.id!==id);
+      c.tareaRepuestos = (c.tareaRepuestos||[]).filter(tr=>tr.repuesto_id!==id);
+      state.wizard=null;
+      drawCatalogo();
+      toast('Repuesto eliminado','success');
+    };
+  });
   document.querySelectorAll('[data-reponer]').forEach(b=>{
     b.onclick = async ()=>{
       const id = b.dataset.reponer;
       const input = document.getElementById('rep-'+id);
       const cantidad = parseInt(input.value,10);
       if(!cantidad || cantidad<1){ toast('Introduce una cantidad válida','error'); return; }
-      const item = c.stockItems.find(x=>x.id===id);
+      const item = c.repuestos.find(x=>x.id===id);
       const nuevoStock = (item.stock||0) + cantidad;
-      const { error } = await sb.from('mant_tareas').update({ stock: nuevoStock }).eq('id', id);
+      const { error } = await sb.from('mant_repuestos').update({ stock: nuevoStock }).eq('id', id);
       if(error){ toast('Error: '+error.message,'error'); return; }
       item.stock = nuevoStock;
       drawCatalogo();
