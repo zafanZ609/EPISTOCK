@@ -1977,6 +1977,9 @@ function drawHistorial(){
   document.querySelectorAll('[data-delete-evento]').forEach(b=>{
     b.onclick = ()=>{ const [sourceTable, id] = b.dataset.deleteEvento.split('|'); borrarEventoHistorial(sourceTable, id); };
   });
+  document.querySelectorAll('[data-doc-evento]').forEach(b=>{
+    b.onclick = ()=>{ const [sourceTable, id] = b.dataset.docEvento.split('|'); generarDocumentoHistorial(sourceTable, id); };
+  });
 }
 
 function renderHistorialTable(rows){
@@ -2000,7 +2003,7 @@ function renderHistorialTable(rows){
       <td>${esc(r.ubicacion||'')}</td>
       <td class="obs-cell">${esc(r.observaciones||'')}</td>
       <td>${r.adjuntoUrl?(r.adjuntoTipo==='foto'?`<img class="hist-thumb" src="${esc(r.adjuntoUrl)}">`:`<a class="pdf-btn" href="${esc(r.adjuntoUrl)}" target="_blank" rel="noopener">📄</a>`):''}</td>
-      <td>${r.sourceTable&&r.sourceId?`<button class="icon-btn" data-delete-evento="${r.sourceTable}|${r.sourceId}" title="Eliminar registro">🗑</button>`:''}</td>
+      <td>${r.sourceTable&&r.sourceId?`<button class="icon-btn" data-doc-evento="${r.sourceTable}|${r.sourceId}" title="Generar documento imprimible">📄</button><button class="icon-btn" data-delete-evento="${r.sourceTable}|${r.sourceId}" title="Eliminar registro">🗑</button>`:''}</td>
     </tr>`;
   });
   html += '</tbody></table></div>';
@@ -2020,6 +2023,122 @@ async function borrarEventoHistorial(sourceTable, id){
   state.misRegistros = null;
   drawHistorial();
   toast('Registro eliminado','success');
+}
+
+/* ---------- Documentos imprimibles individuales (desde Historial) ---------- */
+async function generarDocumentoHistorial(sourceTable, sourceId){
+  const win = window.open('', '_blank');
+  if(win) win.document.write('<p style="font-family:sans-serif;padding:24px;">Generando documento…</p>');
+  try{
+    if(sourceTable==='mant_registros'){
+      const { data:r, error } = await sb.from('mant_registros').select('*, mant_registro_items(*)').eq('id', sourceId).single();
+      if(error) throw error;
+      escribirFichaArbol(win, r, r.mant_registro_items||[]);
+    } else if(sourceTable==='mant_registros_simple'){
+      const { data:r, error } = await sb.from('mant_registros_simple').select('*').eq('id', sourceId).single();
+      if(error) throw error;
+      escribirFichaSimple(win, r);
+    } else if(sourceTable==='mant_extintor_revisiones'){
+      const { data:r, error } = await sb.from('mant_extintor_revisiones').select('*, mant_extintor_revision_respuestas(*)').eq('id', sourceId).single();
+      if(error) throw error;
+      escribirFichaExtintorRevision(win, r);
+    } else if(sourceTable==='mant_piezas3d_fabricacion'){
+      const { data:r, error } = await sb.from('mant_piezas3d_fabricacion').select('*, mant_piezas3d_fabricacion_items(*)').eq('id', sourceId).single();
+      if(error) throw error;
+      const items = (r.mant_piezas3d_fabricacion_items||[]).map(it=>({ referencia: it.referencia_snapshot, cantidad: it.cantidad }));
+      escribirDocumentoFabricacion(win, r, items);
+    } else if(sourceTable==='mant_bastidor_registros'){
+      const { data:r, error } = await sb.from('mant_bastidor_registros').select('*, mant_bastidor_registro_piezas(*)').eq('id', sourceId).single();
+      if(error) throw error;
+      escribirFichaBastidor(win, r, r.mant_bastidor_registro_piezas||[]);
+    } else {
+      if(win && !win.closed) win.close();
+      toast('No se puede generar documento para este tipo de registro.','error');
+    }
+  }catch(e){
+    if(win && !win.closed) win.close();
+    toast('Error al generar el documento: '+e.message,'error');
+  }
+}
+
+function fichaEstilosTabla(){
+  return 'body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111;} h1{font-size:18px;margin:0 0 4px;} .meta{font-size:12.5px;color:#555;margin-bottom:16px;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #999;padding:6px 8px;font-size:11.5px;text-align:left;} th{background:#eee;} .row{margin-bottom:8px;font-size:12.5px;} .label{font-weight:700;}';
+}
+
+function escribirFichaArbol(win, r, items){
+  const fecha = fmtFechaHora(r.ts);
+  const estilos = fichaEstilosTabla();
+  const ambitoLabel = r.ambito==='vehiculo' ? 'Vehículo' : 'Línea';
+  const ambitoNombre = r.ambito==='vehiculo' ? (r.vehiculo_nombre||'') : (r.linea_codigo||'');
+  const thead = '<tr><th>Elemento</th><th>Tarea</th><th>Repuesto</th></tr>';
+  const rows = (items.length?items:[null]).map(it=>
+    `<tr><td>${esc(it?it.elemento_nombre:'')}</td><td>${esc(it?it.tarea_nombre:'')}</td><td>${esc(it&&it.referencia?it.referencia:'—')}</td></tr>`
+  ).join('');
+  const bodyHtml = `<h1>Mantenimiento de ${esc(ambitoLabel.toLowerCase())}</h1>
+    <div class="meta">${esc(ambitoLabel)}: ${esc(ambitoNombre)} · Tipo: ${r.tipo==='correctivo'?'Correctivo':'Preventivo'} · Fecha: ${esc(fecha)} · Operario: ${esc(r.trabajador_nombre||'')}</div>
+    <table><thead>${thead}</thead><tbody>${rows}</tbody></table>
+    ${r.observaciones?`<div style="margin-top:14px;font-size:12px;"><b>Observaciones:</b> ${esc(r.observaciones)}</div>`:''}`;
+  win.document.open();
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ficha de mantenimiento</title><style>${estilos}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();};<\/script></body></html>`);
+  win.document.close();
+}
+
+function escribirFichaSimple(win, r){
+  const fecha = fmtFechaHora(r.ts);
+  const estilos = fichaEstilosTabla();
+  const esCarretillaExterna = r.tipo==='carretillas_externo';
+  const esCarretillaAgua = r.tipo==='carretillas_agua';
+  const esCarretilla = esCarretillaExterna || esCarretillaAgua;
+  const tituloTipo = tipoMantLabel(esCarretilla?'carretillas':r.tipo);
+  const subtitulo = r.subtipo ? subtipoLabelFor(r.tipo, r.subtipo)
+    : esCarretillaExterna ? ('Externo'+(r.empresa_externa?(' · '+r.empresa_externa):''))
+    : esCarretillaAgua ? 'Rellenado de agua de baterías'
+    : (r.empresa_externa?('Empresa: '+r.empresa_externa):'');
+  let bodyHtml = `<h1>${esc(tituloTipo)}</h1><div class="meta">Fecha: ${esc(fecha)} · Operario: ${esc(r.trabajador_nombre||'')}</div>`;
+  if(esCarretilla && r.referencia_nombre) bodyHtml += `<div class="row"><span class="label">Vehículo:</span> ${esc(r.referencia_nombre)}</div>`;
+  if(r.titulo) bodyHtml += `<div class="row"><span class="label">Título:</span> ${esc(r.titulo)}</div>`;
+  if(subtitulo) bodyHtml += `<div class="row"><span class="label">Detalle:</span> ${esc(subtitulo)}</div>`;
+  if(r.descripcion) bodyHtml += `<div class="row"><span class="label">Descripción:</span> ${esc(r.descripcion)}</div>`;
+  if(r.pdf_url) bodyHtml += `<div class="row"><span class="label">Adjunto:</span> <a href="${esc(r.pdf_url)}" target="_blank">Ver PDF</a></div>`;
+  win.document.open();
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ficha de mantenimiento</title><style>${estilos}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();};<\/script></body></html>`);
+  win.document.close();
+}
+
+function escribirFichaExtintorRevision(win, r){
+  const fecha = fmtFechaHora(r.ts);
+  const estilos = fichaEstilosTabla();
+  let bodyHtml = `<h1>${r.tipo==='trimestral'?'Revisión trimestral de extintor':'Inspección anual de extintor'}</h1>
+    <div class="meta">Nº placa: ${esc(r.extintor_numero||'')} · Fecha: ${esc(fecha)} · Operario: ${esc(r.trabajador_nombre||'')}</div>`;
+  if(r.tipo==='trimestral'){
+    const resp = r.mant_extintor_revision_respuestas||[];
+    const rows = resp.map(x=>`<tr><td>${esc(x.pregunta_texto)}</td><td>${x.respuesta===true?'Sí':x.respuesta===false?'No':'—'}</td></tr>`).join('');
+    bodyHtml += `<table><thead><tr><th>Pregunta</th><th>Respuesta</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } else {
+    bodyHtml += r.pdf_url ? `<div class="row">Certificado: <a href="${esc(r.pdf_url)}" target="_blank">Ver PDF</a></div>` : '<div class="row">Sin certificado adjunto.</div>';
+  }
+  if(r.observaciones) bodyHtml += `<div style="margin-top:14px;font-size:12px;"><b>Observaciones:</b> ${esc(r.observaciones)}</div>`;
+  win.document.open();
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ficha de extintor</title><style>${estilos}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();};<\/script></body></html>`);
+  win.document.close();
+}
+
+function escribirFichaBastidor(win, r, piezas){
+  const fecha = fmtFechaHora(r.ts);
+  const estilos = fichaEstilosTabla();
+  const partes = [];
+  if(r.limpieza) partes.push('Limpieza '+(r.limpieza_tipo==='total'?'total':'parcial'));
+  if(r.reparacion) partes.push('Reparación');
+  let bodyHtml = `<h1>Mantenimiento de bastidor</h1>
+    <div class="meta">Bastidor: ${esc(r.bastidor_nombre||'')} · ${esc(partes.join(' + ')||'—')} · Fecha: ${esc(fecha)} · Operario: ${esc(r.trabajador_nombre||'')}</div>`;
+  if(piezas.length){
+    const rows = piezas.map(p=>`<tr><td>${esc(p.referencia_snapshot||'')}</td><td>${esc(p.cantidad)}</td></tr>`).join('');
+    bodyHtml += `<table><thead><tr><th>Repuesto</th><th>Cantidad</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  if(r.observaciones) bodyHtml += `<div style="margin-top:14px;font-size:12px;"><b>Observaciones:</b> ${esc(r.observaciones)}</div>`;
+  win.document.open();
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ficha de bastidor</title><style>${estilos}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();};<\/script></body></html>`);
+  win.document.close();
 }
 
 function exportCSV(rows){
