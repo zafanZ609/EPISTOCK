@@ -143,6 +143,8 @@
   }
   .tipo-btn.preventivo.selected{border-color:var(--blue);background:#eff6ff;color:var(--blue);}
   .tipo-btn.correctivo.selected{border-color:var(--red);background:var(--red-50);color:var(--red);}
+  .tipo-btn.agua.selected{border-color:var(--blue);background:#eff6ff;color:var(--blue);}
+  .warning-banner{background:var(--red-50);border:1.5px solid var(--red);color:var(--red);font-weight:800;font-size:14px;text-align:center;padding:14px 16px;border-radius:10px;}
 
   .elemento-block{border:1px solid var(--steel-200);border-radius:10px;margin-bottom:10px;overflow:hidden;}
   .elemento-head{background:var(--steel-50);padding:11px 14px;font-weight:700;font-size:13.5px;color:var(--steel-800);}
@@ -222,6 +224,7 @@
   .leaf-toggle .nivel-card-name{flex:1;}
   .repuesto-subpicker{padding:2px 8px 8px 32px;display:flex;flex-direction:column;gap:8px;}
   .repuesto-hint{font-size:11.5px;color:var(--steel-500);margin:0 0 2px 32px;}
+  .nivel-card.branch.ronda-item.done{border-color:var(--green);background:#f0fdf4;}
 
   .selected-summary{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px;}
   .sel-chip{background:var(--steel-900);color:#fff;font-size:12px;font-weight:600;padding:6px 8px 6px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;}
@@ -263,6 +266,7 @@
   .hist-table tbody tr:nth-child(odd){background:var(--steel-50);}
   .hist-table tbody tr:hover{background:var(--amber-50);}
   .hist-thumb{width:26px;height:26px;object-fit:cover;border-radius:5px;border:1px solid var(--steel-200);display:block;}
+  .inline-date{padding:5px 6px;border:1.5px solid var(--steel-200);border-radius:7px;font-size:12px;color:var(--steel-800);}
   .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;}
   .pill.on{background:#f0fdf4;color:var(--green);}
   .pill.off{background:var(--steel-100);color:var(--steel-600);}
@@ -359,7 +363,7 @@ const state = {
   catalogo:{
     lineas:null, elementos:null, lineaElementos:null, tareasPorElemento:{}, elementoSel:null, editingTareaId:null, addingSubTo:null,
     vehiculos:null, vehiculoElementos:null, vehiculoSel:null,
-    extintores:null, checklist:null,
+    extintores:null, checklist:null, rondas:null,
     repuestos:null, tareaRepuestos:null, repuestoEditId:null,
   },
   accesos:null,
@@ -659,7 +663,8 @@ function newWizardState(){
     ambito:null, ambitos:null, ambitoId:null,
     tipoRep:null, elementos:null, elementoId:null, treeCache:{}, navStack:[], selected:new Map(), observaciones:'',
     carretillaModo:null,
-    extintores:null, extintorId:null, extintorModo:null, checklist:null, respuestas:{},
+    extintores:null, checklist:null, respuestas:{},
+    extRondaTipo:null, extRonda:null, extRondaRevisiones:null, extRondaExtintorId:null,
     simpleSubtipo:null, simpleTitulo:'', simpleDescripcion:'', simpleEmpresa:'',
   };
 }
@@ -1049,14 +1054,25 @@ function drawCarretillasFlow(w){
     html += `<div class="tipo-row">
       <button class="tipo-btn preventivo ${w.carretillaModo==='interno'?'selected':''}" data-modo="interno">🔧 Interno</button>
       <button class="tipo-btn correctivo ${w.carretillaModo==='externo'?'selected':''}" data-modo="externo">🏭 Externo (empresa externa)</button>
+      <button class="tipo-btn agua ${w.carretillaModo==='agua'?'selected':''}" data-modo="agua">💧 Rellenar agua baterías</button>
     </div>`;
   }
   if(w.ambitoId && w.carretillaModo==='interno'){
     html += drawTipoRepYElemento(w);
   } else if(w.ambitoId && w.carretillaModo==='externo'){
     html += drawSimpleForm(w);
+  } else if(w.ambitoId && w.carretillaModo==='agua'){
+    html += drawAguaBateriasForm(w);
   }
   html += '</div>';
+  return html;
+}
+
+function drawAguaBateriasForm(w){
+  let html = '<div class="warning-banner">⚠️ ¡RELLENAR SIEMPRE CON LA BATERÍA 100% CARGADA!</div>';
+  html += '<div class="section-title" style="margin-top:14px;">Observaciones (opcional)</div>';
+  html += `<textarea id="sf-descripcion" placeholder="Notas adicionales...">${esc(w.simpleDescripcion)}</textarea>`;
+  html += `<div style="margin-top:18px;"><button class="btn btn-amber" id="btn-guardar-agua">He rellenado el agua de las baterías</button></div>`;
   return html;
 }
 
@@ -1086,6 +1102,32 @@ function bindCarretillasFlowEvents(){
   });
   if(w.carretillaModo==='interno'){ bindTipoRepYElementoEvents(w); }
   else if(w.carretillaModo==='externo'){ bindSimpleFormEvents(w, saveCarretillaExterno); }
+  else if(w.carretillaModo==='agua'){
+    const desc = document.getElementById('sf-descripcion'); if(desc) desc.oninput = e=> w.simpleDescripcion = e.target.value;
+    const btnAgua = document.getElementById('btn-guardar-agua'); if(btnAgua) btnAgua.onclick = guardarAguaBaterias;
+  }
+}
+
+async function guardarAguaBaterias(){
+  const w = state.wizard;
+  const btn = document.getElementById('btn-guardar-agua');
+  btn.disabled=true; btn.textContent='Guardando…';
+  try{
+    const ambitoObj = (w.ambitos||[]).find(a=>a.id===w.ambitoId);
+    const { error } = await sb.from('mant_registros_simple').insert({
+      trabajador_id: state.trabajador.id, numero_empleado: state.trabajador.numero_empleado, trabajador_nombre: state.trabajador.nombre,
+      tipo:'carretillas_agua', referencia_nombre: ambitoObj?ambitoObj.label:null,
+      descripcion: (w.simpleDescripcion&&w.simpleDescripcion.trim()) || 'Rellenado de agua de baterías',
+    });
+    if(error) throw error;
+    toast('Registro guardado correctamente','success');
+    state.misRegistros=null; state.historial=null;
+    w.simpleDescripcion=''; w.carretillaModo=null;
+    drawWizard();
+  }catch(e){
+    toast('Error al guardar: '+e.message,'error');
+    btn.disabled=false; btn.textContent='He rellenado el agua de las baterías';
+  }
 }
 
 async function saveCarretillaExterno(){
@@ -1131,30 +1173,74 @@ async function loadExtintoresList(){
 function drawExtintoresFlow(w){
   let html = '<div class="card">';
   html += wizardBackHeader('Extintores');
-  if(w.extintores===null){
-    html += '<div class="section-title">Extintor</div><div class="spinner"></div></div>';
-    return html;
-  }
-  html += '<div class="section-title">Extintor</div><div class="chip-row" id="wiz-extintores">';
-  html += w.extintores.map(e=>`<button class="chip-btn ${w.extintorId===e.id?'selected':''}" data-extintor="${e.id}">Nº ${esc(e.numero)}${e.ubicacion?' · '+esc(e.ubicacion):''}</button>`).join('');
-  html += '</div>';
-  if(w.extintores.length===0){
-    html += '<div class="empty-state">Todavía no hay extintores dados de alta. Añádelos desde Catálogo.</div></div>';
-    return html;
-  }
-  if(w.extintorId){
-    html += '<div class="section-title" style="margin-top:18px;">Tipo de revisión</div>';
+  if(!w.extRondaTipo){
+    html += '<div class="section-title">Tipo de revisión</div>';
+    html += `<div class="hint" style="margin-bottom:10px;">Cada revisión (trimestral o anual) se hace en una sola ronda que cubre el 100% de los extintores. Si ya hay una ronda abierta de este tipo, continuarás donde la dejaste.</div>`;
     html += `<div class="tipo-row">
-      <button class="tipo-btn preventivo ${w.extintorModo==='trimestral'?'selected':''}" data-extmodo="trimestral">📋 Revisión trimestral</button>
-      <button class="tipo-btn correctivo ${w.extintorModo==='anual'?'selected':''}" data-extmodo="anual">🏭 Inspección anual (empresa externa)</button>
+      <button class="tipo-btn preventivo" data-extrondatipo="trimestral">📋 Revisión trimestral</button>
+      <button class="tipo-btn correctivo" data-extrondatipo="anual">🏭 Inspección anual (empresa externa)</button>
     </div>`;
+    html += '</div>';
+    return html;
   }
-  if(w.extintorId && w.extintorModo==='trimestral'){
-    html += drawChecklist(w);
-  } else if(w.extintorId && w.extintorModo==='anual'){
-    html += drawExtintorAnualForm(w);
+  if(w.extintores===null || w.extRonda===null){
+    html += '<div class="spinner"></div></div>';
+    return html;
   }
+  html += drawRondaProgress(w);
   html += '</div>';
+  return html;
+}
+
+async function loadOrCreateRonda(tipo){
+  const w = state.wizard;
+  const { data:existing } = await sb.from('mant_extintor_rondas').select('*').eq('tipo',tipo).eq('cerrada',false).order('iniciada_ts',{ascending:false}).limit(1);
+  let ronda;
+  if(existing && existing.length){
+    ronda = existing[0];
+  } else {
+    const { data, error } = await sb.from('mant_extintor_rondas').insert({
+      tipo, iniciada_por_id: state.trabajador.id, iniciada_por_nombre: state.trabajador.nombre,
+    }).select().single();
+    if(error){ toast('Error al iniciar la ronda: '+error.message,'error'); return; }
+    ronda = data;
+  }
+  w.extRonda = ronda;
+  const { data:revs } = await sb.from('mant_extintor_revisiones').select('*, mant_extintor_revision_respuestas(*)').eq('ronda_id', ronda.id);
+  w.extRondaRevisiones = revs || [];
+}
+
+function drawRondaProgress(w){
+  const activos = (w.extintores||[]).filter(e=>e.activo);
+  const doneIds = new Set((w.extRondaRevisiones||[]).map(r=>r.extintor_id));
+  const pendientes = activos.filter(e=>!doneIds.has(e.id)).length;
+
+  if(w.extRondaExtintorId){
+    const extintor = activos.find(e=>e.id===w.extRondaExtintorId);
+    let html = `<div class="wiz-subheader"><button class="btn-back" id="btn-back-extintor-ronda">‹ Volver al listado</button></div>`;
+    html += `<h2 style="margin-top:2px;">Nº ${esc(extintor?extintor.numero:'')}${extintor&&extintor.ubicacion?' · '+esc(extintor.ubicacion):''}</h2>`;
+    html += w.extRondaTipo==='trimestral' ? drawChecklist(w) : drawExtintorAnualForm(w);
+    return html;
+  }
+
+  let html = `<div class="wiz-subheader"><button class="btn-back" id="btn-back-rondatipo">‹ Cambiar tipo de revisión</button></div>`;
+  html += `<h2 style="margin-top:2px;">${w.extRondaTipo==='trimestral'?'Revisión trimestral':'Inspección anual'}</h2>`;
+  html += `<div class="hint" style="margin-bottom:12px;">Ronda iniciada por ${esc(w.extRonda.iniciada_por_nombre||'')} · ${activos.length-pendientes} / ${activos.length} extintores revisados</div>`;
+  if(activos.length===0){
+    html += '<div class="empty-state">No hay extintores activos dados de alta. Añádelos desde Catálogo.</div>';
+    return html;
+  }
+  html += '<div class="nivel-list">';
+  activos.forEach(e=>{
+    const done = doneIds.has(e.id);
+    html += `<div class="nivel-card branch ronda-item ${done?'done':''}">
+      <button class="nivel-card-inner" data-revisar-extintor="${e.id}"><span class="nivel-card-name">Nº ${esc(e.numero)}${e.ubicacion?' · '+esc(e.ubicacion):''}</span><span class="chevron">${done?'✅':'›'}</span></button>
+    </div>`;
+  });
+  html += '</div>';
+  const puedeCerrar = pendientes===0;
+  html += `<div style="margin-top:18px;"><button class="btn btn-amber" id="btn-cerrar-ronda" ${puedeCerrar?'':'disabled'}>Cerrar ronda y generar documento</button></div>`;
+  if(!puedeCerrar) html += `<div class="hint">Faltan ${pendientes} extintor(es) por revisar para poder cerrar esta ronda.</div>`;
   return html;
 }
 
@@ -1194,52 +1280,60 @@ function drawExtintorAnualForm(w){
 function bindExtintoresEvents(){
   const w = state.wizard;
   bindBackHeader(w);
-  document.querySelectorAll('#wiz-extintores .chip-btn').forEach(btn=>{
-    btn.onclick = ()=>{
-      const id = btn.dataset.extintor;
-      if(w.extintorId===id) return;
-      w.extintorId=id; w.extintorModo=null; w.checklist=null; w.respuestas={}; w.observaciones='';
+  document.querySelectorAll('[data-extrondatipo]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      w.extRondaTipo = btn.dataset.extrondatipo;
+      w.extRonda=null; w.extRondaRevisiones=null; w.extRondaExtintorId=null;
+      drawWizard();
+      if(w.extintores===null) await loadExtintoresList();
+      await loadOrCreateRonda(w.extRondaTipo);
       drawWizard();
     };
   });
-  document.querySelectorAll('.tipo-btn[data-extmodo]').forEach(btn=>{
+  const backRondaTipo = document.getElementById('btn-back-rondatipo');
+  if(backRondaTipo) backRondaTipo.onclick = ()=>{ w.extRondaTipo=null; w.extRonda=null; w.extRondaRevisiones=null; w.extRondaExtintorId=null; drawWizard(); };
+  document.querySelectorAll('[data-revisar-extintor]').forEach(btn=>{
     btn.onclick = async ()=>{
-      w.extintorModo = btn.dataset.extmodo;
-      if(w.extintorModo==='trimestral' && !w.checklist){
-        drawWizard();
+      w.extRondaExtintorId = btn.dataset.revisarExtintor;
+      w.respuestas = {}; w.observaciones = '';
+      drawWizard();
+      if(w.extRondaTipo==='trimestral' && !w.checklist){
         const { data } = await sb.from('mant_extintor_checklist_items').select('*').eq('activo',true).order('orden');
         w.checklist = data||[];
-        drawWizard();
-      } else {
         drawWizard();
       }
     };
   });
+  const backExtintorRonda = document.getElementById('btn-back-extintor-ronda');
+  if(backExtintorRonda) backExtintorRonda.onclick = ()=>{ w.extRondaExtintorId=null; drawWizard(); };
   document.querySelectorAll('.chk-btn').forEach(btn=>{
     btn.onclick = ()=>{ w.respuestas[btn.dataset.chk] = btn.dataset.val==='true'; drawWizard(); };
   });
   const obs = document.getElementById('wiz-ext-obs'); if(obs) obs.oninput = e=> w.observaciones = e.target.value;
   const btnChk = document.getElementById('btn-guardar-checklist'); if(btnChk) btnChk.onclick = guardarRevisionTrimestral;
   const btnAnual = document.getElementById('btn-guardar-anual'); if(btnAnual) btnAnual.onclick = guardarRevisionAnual;
+  const btnCerrar = document.getElementById('btn-cerrar-ronda'); if(btnCerrar) btnCerrar.onclick = cerrarRonda;
 }
 
 async function guardarRevisionTrimestral(){
   const w = state.wizard;
   const btn = document.getElementById('btn-guardar-checklist');
   btn.disabled=true; btn.textContent='Guardando…';
-  const extintor = (w.extintores||[]).find(e=>e.id===w.extintorId);
+  const extintor = (w.extintores||[]).find(e=>e.id===w.extRondaExtintorId);
   try{
     const { data:rev, error:revErr } = await sb.from('mant_extintor_revisiones').insert({
       trabajador_id: state.trabajador.id, numero_empleado: state.trabajador.numero_empleado, trabajador_nombre: state.trabajador.nombre,
-      extintor_id: w.extintorId, extintor_numero: extintor?extintor.numero:null, tipo:'trimestral', observaciones: w.observaciones||null,
+      extintor_id: w.extRondaExtintorId, extintor_numero: extintor?extintor.numero:null, tipo:'trimestral', observaciones: w.observaciones||null,
+      ronda_id: w.extRonda.id,
     }).select().single();
     if(revErr) throw revErr;
     const respRows = w.checklist.map(q=>({ revision_id:rev.id, pregunta_id:q.id, pregunta_texto:q.pregunta, respuesta: w.respuestas[q.id] }));
-    const { error:respErr } = await sb.from('mant_extintor_revision_respuestas').insert(respRows);
+    const { error:respErr } = await sb.from('mant_extintor_revision_respuestas').insert(respRows).select();
     if(respErr) throw respErr;
-    toast('Revisión guardada correctamente','success');
+    toast('Extintor revisado','success');
     state.misRegistros=null; state.historial=null;
-    w.extintorId=null; w.extintorModo=null; w.checklist=null; w.respuestas={}; w.observaciones='';
+    w.extRondaRevisiones.push(Object.assign({}, rev, {mant_extintor_revision_respuestas: respRows}));
+    w.extRondaExtintorId=null; w.respuestas={}; w.observaciones='';
     drawWizard();
   }catch(e){
     toast('Error al guardar: '+e.message,'error');
@@ -1256,26 +1350,83 @@ async function guardarRevisionAnual(){
     let pdf_url = null;
     if(fileInput.files && fileInput.files[0]){
       const file = fileInput.files[0];
-      const path = 'extintores/'+w.extintorId+'-'+Date.now()+'.pdf';
+      const path = 'extintores/'+w.extRondaExtintorId+'-'+Date.now()+'.pdf';
       const { error:upErr } = await sb.storage.from('mant-pdfs').upload(path, file, { upsert:true });
       if(upErr) throw upErr;
       const { data:pub } = sb.storage.from('mant-pdfs').getPublicUrl(path);
       pdf_url = pub.publicUrl;
     }
-    const extintor = (w.extintores||[]).find(e=>e.id===w.extintorId);
-    const { error } = await sb.from('mant_extintor_revisiones').insert({
+    const extintor = (w.extintores||[]).find(e=>e.id===w.extRondaExtintorId);
+    const { data:rev, error } = await sb.from('mant_extintor_revisiones').insert({
       trabajador_id: state.trabajador.id, numero_empleado: state.trabajador.numero_empleado, trabajador_nombre: state.trabajador.nombre,
-      extintor_id: w.extintorId, extintor_numero: extintor?extintor.numero:null, tipo:'anual', observaciones: w.observaciones||null, pdf_url,
-    });
+      extintor_id: w.extRondaExtintorId, extintor_numero: extintor?extintor.numero:null, tipo:'anual', observaciones: w.observaciones||null, pdf_url,
+      ronda_id: w.extRonda.id,
+    }).select().single();
     if(error) throw error;
-    toast('Inspección anual guardada','success');
+    toast('Extintor certificado','success');
     state.misRegistros=null; state.historial=null;
-    w.extintorId=null; w.extintorModo=null; w.observaciones='';
+    w.extRondaRevisiones.push(rev);
+    w.extRondaExtintorId=null; w.observaciones='';
     drawWizard();
   }catch(e){
     toast('Error al guardar: '+e.message,'error');
     btn.disabled=false; btn.textContent='Guardar inspección anual';
   }
+}
+
+async function cerrarRonda(){
+  const w = state.wizard;
+  const btn = document.getElementById('btn-cerrar-ronda');
+  const win = window.open('', '_blank');
+  if(win) win.document.write('<p style="font-family:sans-serif;padding:24px;">Generando documento…</p>');
+  btn.disabled=true; btn.textContent='Cerrando…';
+  try{
+    const { data, error } = await sb.from('mant_extintor_rondas').update({
+      cerrada:true, cerrada_ts:new Date().toISOString(), cerrada_por_id: state.trabajador.id, cerrada_por_nombre: state.trabajador.nombre,
+    }).eq('id', w.extRonda.id).select().single();
+    if(error) throw error;
+    toast('Ronda cerrada','success');
+    if(win && !win.closed){ escribirDocumentoRonda(win, data, w.extintores||[], w.extRondaRevisiones||[]); }
+    else { toast('El documento no se pudo abrir automáticamente. Genéralo desde Catálogo → Extintores → Rondas.','error'); }
+    if(state.catalogo.rondas) state.catalogo.rondas = null;
+    w.extRondaTipo=null; w.extRonda=null; w.extRondaRevisiones=null; w.extRondaExtintorId=null;
+    drawWizard();
+  }catch(e){
+    if(win && !win.closed) win.close();
+    toast('Error al cerrar la ronda: '+e.message,'error');
+    btn.disabled=false; btn.textContent='Cerrar ronda y generar documento';
+  }
+}
+
+function escribirDocumentoRonda(win, ronda, extintores, revisiones){
+  const activos = (extintores||[]).filter(e=>e.activo!==false);
+  const fecha = ronda.cerrada_ts ? fmtFechaHora(ronda.cerrada_ts) : '';
+  const estilos = 'body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111;} h1{font-size:18px;margin:0 0 4px;} .meta{font-size:12.5px;color:#555;margin-bottom:16px;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #999;padding:6px 8px;font-size:11.5px;text-align:left;} th{background:#eee;}';
+  let bodyHtml;
+  if(ronda.tipo==='trimestral'){
+    const preguntas = []; const seen = new Set();
+    revisiones.forEach(r=>{ (r.mant_extintor_revision_respuestas||[]).forEach(resp=>{ if(!seen.has(resp.pregunta_texto)){ seen.add(resp.pregunta_texto); preguntas.push(resp.pregunta_texto); } }); });
+    const thead = '<tr><th>Nº placa</th><th>Ubicación</th>'+preguntas.map(p=>`<th>${esc(p)}</th>`).join('')+'<th>Observaciones</th></tr>';
+    const rows = activos.map(e=>{
+      const rev = revisiones.find(r=>r.extintor_id===e.id);
+      const respMap = {};
+      (rev&&rev.mant_extintor_revision_respuestas||[]).forEach(r=> respMap[r.pregunta_texto]=r.respuesta);
+      const cells = preguntas.map(p=> `<td>${respMap[p]===true?'Sí':respMap[p]===false?'No':'—'}</td>`).join('');
+      return `<tr><td>${esc(e.numero)}</td><td>${esc(e.ubicacion||'')}</td>${cells}<td>${esc(rev&&rev.observaciones||'')}</td></tr>`;
+    }).join('');
+    bodyHtml = `<h1>Ronda de revisión trimestral de extintores</h1><div class="meta">Cerrada: ${esc(fecha)} · Por: ${esc(ronda.cerrada_por_nombre||'')}</div><table><thead>${thead}</thead><tbody>${rows}</tbody></table>`;
+  } else {
+    const thead = '<tr><th>Nº placa</th><th>Ubicación</th><th>Certificado</th><th>Observaciones</th></tr>';
+    const rows = activos.map(e=>{
+      const rev = revisiones.find(r=>r.extintor_id===e.id);
+      const cert = rev && rev.pdf_url ? `<a href="${esc(rev.pdf_url)}" target="_blank">Ver PDF</a>` : '—';
+      return `<tr><td>${esc(e.numero)}</td><td>${esc(e.ubicacion||'')}</td><td>${cert}</td><td>${esc(rev&&rev.observaciones||'')}</td></tr>`;
+    }).join('');
+    bodyHtml = `<h1>Ronda de inspección anual de extintores</h1><div class="meta">Cerrada: ${esc(fecha)} · Por: ${esc(ronda.cerrada_por_nombre||'')}</div><table><thead>${thead}</thead><tbody>${rows}</tbody></table>`;
+  }
+  win.document.open();
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ronda extintores</title><style>${estilos}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();};<\/script></body></html>`);
+  win.document.close();
 }
 
 /* ---------- Flujo simple (compresores, gas, informático, residuos, otros) ---------- */
@@ -1413,13 +1564,16 @@ async function loadAllEventos(scopeTrabajadorId){
   });
   (simple||[]).forEach(r=>{
     const esCarretillaExterna = r.tipo==='carretillas_externo';
+    const esCarretillaAgua = r.tipo==='carretillas_agua';
+    const esCarretilla = esCarretillaExterna || esCarretillaAgua;
     const subtipoTxt = r.subtipo ? subtipoLabelFor(r.tipo, r.subtipo)
       : esCarretillaExterna ? ('Externo'+(r.empresa_externa?(' · '+r.empresa_externa):''))
+      : esCarretillaAgua ? 'Rellenado de agua de baterías'
       : (r.empresa_externa?('Empresa: '+r.empresa_externa):'');
     rows.push({
-      ts: r.ts, tipoCode: esCarretillaExterna?'carretillas':r.tipo,
-      tipoLabel: tipoMantLabel(esCarretillaExterna?'carretillas':r.tipo),
-      referenciaAmbito: esCarretillaExterna ? (r.referencia_nombre||'') : (r.titulo || r.empresa_externa || ''),
+      ts: r.ts, tipoCode: esCarretilla?'carretillas':r.tipo,
+      tipoLabel: tipoMantLabel(esCarretilla?'carretillas':r.tipo),
+      referenciaAmbito: esCarretilla ? (r.referencia_nombre||'') : (r.titulo || r.empresa_externa || ''),
       subtipo: subtipoTxt,
       numeroEmpleado: r.numero_empleado, operario: r.trabajador_nombre,
       detalle: r.descripcion||'', referencia:'', ubicacion:'',
@@ -1589,6 +1743,7 @@ async function ensureCatalogoLoaded(){
   if(c.vehiculoElementos===null){ const { data } = await sb.from('mant_vehiculo_elementos').select('*'); c.vehiculoElementos = data||[]; }
   if(c.extintores===null){ const { data } = await sb.from('mant_extintores').select('*').order('numero'); c.extintores = data||[]; }
   if(c.checklist===null){ const { data } = await sb.from('mant_extintor_checklist_items').select('*').order('orden'); c.checklist = data||[]; }
+  if(c.rondas===null){ const { data } = await sb.from('mant_extintor_rondas').select('*').order('iniciada_ts',{ascending:false}).limit(30); c.rondas = data||[]; }
   if(c.repuestos===null){ const { data } = await sb.from('mant_repuestos').select('*').order('referencia'); c.repuestos = data||[]; }
   if(c.tareaRepuestos===null){ const { data } = await sb.from('mant_tarea_repuestos').select('*'); c.tareaRepuestos = data||[]; }
 }
@@ -1794,10 +1949,13 @@ function drawCatVehiculos(){
 
 function drawCatExtintores(){
   const c = state.catalogo;
-  let html = '<div class="card"><h2>Extintores</h2><table class="admin-table"><thead><tr><th>Nº</th><th>Tipo</th><th>Ubicación</th><th>Fabricación</th><th>Retimbrado</th><th>Estado</th><th></th></tr></thead><tbody>';
+  let html = '<div class="card"><h2>Extintores</h2>';
+  html += '<table class="admin-table"><thead><tr><th>Nº placa</th><th>Tipo</th><th>Eficacia</th><th>Ubicación</th><th>Año fabr.</th><th>Último retimbre</th><th>Próximo retimbre</th><th>Estado</th><th></th></tr></thead><tbody>';
   (c.extintores||[]).forEach(e=>{
-    html += `<tr><td><b>${esc(e.numero)}</b></td><td>${esc(e.tipo||'')}</td><td>${esc(e.ubicacion||'')}</td>
-      <td>${esc(e.fecha_fabricacion||'')}</td><td>${esc(e.fecha_retimbrado||'')}</td>
+    html += `<tr><td><b>${esc(e.numero)}</b></td><td>${esc(e.tipo||'')}</td><td>${esc(e.eficacia||'')}</td><td>${esc(e.ubicacion||'')}</td>
+      <td>${esc(e.anio_fabricacion||'')}</td>
+      <td><input type="date" class="inline-date" data-fecha-extintor="${e.id}|ultimo_retimbre" value="${esc(e.ultimo_retimbre||'')}"></td>
+      <td><input type="date" class="inline-date" data-fecha-extintor="${e.id}|proximo_retimbre" value="${esc(e.proximo_retimbre||'')}"></td>
       <td><span class="pill ${e.activo?'on':'off'}">${e.activo?'Activo':'Obsoleto'}</span></td>
       <td>
         <button class="icon-btn" data-toggle-extintor="${e.id}" title="${e.activo?'Marcar obsoleto':'Reactivar'}">${e.activo?'⏸':'▶'}</button>
@@ -1806,16 +1964,18 @@ function drawCatExtintores(){
   });
   html += '</tbody></table>';
   html += `<div class="inline-form">
-    <div class="field"><label>Número</label><input id="nex-numero" placeholder="Ej. EXT-014"></div>
+    <div class="field"><label>Nº placa</label><input id="nex-numero" placeholder="Ej. EXT-014"></div>
     <div class="field"><label>Tipo</label><input id="nex-tipo" placeholder="Ej. Polvo ABC"></div>
+    <div class="field"><label>Eficacia</label><input id="nex-eficacia" placeholder="Ej. 21A 113B"></div>
     <div class="field"><label>Ubicación</label><input id="nex-ubicacion" placeholder="Ej. Nave 2, cuadro eléctrico"></div>
-    <div class="field"><label>Fecha fabricación</label><input id="nex-fabricacion" type="date"></div>
-    <div class="field"><label>Fecha retimbrado</label><input id="nex-retimbrado" type="date"></div>
+    <div class="field"><label>Año de fabricación</label><input id="nex-anio" type="number" min="1980" max="2100" placeholder="Ej. 2022"></div>
+    <div class="field"><label>Último retimbre</label><input id="nex-ultimo" type="date"></div>
+    <div class="field"><label>Próximo retimbre</label><input id="nex-proximo" type="date"></div>
     <button class="btn btn-primary btn-sm" id="btn-add-extintor">+ Dar de alta</button>
   </div>`;
 
   html += '<h3 style="margin-top:22px;">Checklist de revisión trimestral</h3>';
-  html += '<div class="hint" style="margin-bottom:10px;">Estas preguntas se muestran a los operarios cada vez que hacen una revisión trimestral.</div>';
+  html += '<div class="hint" style="margin-bottom:10px;">Estas preguntas se muestran a los operarios cada vez que hacen una revisión trimestral. Puedes seguir añadiendo más.</div>';
   (c.checklist||[]).forEach(q=>{
     html += `<div class="checklist-item"><span class="checklist-q">${esc(q.pregunta)}${!q.activo?' <span class="pill off">inactiva</span>':''}</span>
       <button class="icon-btn" data-toggle-checklist="${q.id}" title="${q.activo?'Desactivar':'Activar'}">${q.activo?'⏸':'▶'}</button></div>`;
@@ -1824,6 +1984,22 @@ function drawCatExtintores(){
     <div class="field"><label>Nueva pregunta</label><input id="ncl-pregunta" placeholder="Ej. ¿Está el precinto intacto?"></div>
     <button class="btn btn-primary btn-sm" id="btn-add-checklist">+ Añadir pregunta</button>
   </div>`;
+
+  html += '<h3 style="margin-top:22px;">Rondas de revisión</h3>';
+  html += '<div class="hint" style="margin-bottom:10px;">Cada ronda cubre el 100% de los extintores activos. Cuando está cerrada puedes regenerar su documento.</div>';
+  if(!c.rondas || c.rondas.length===0){
+    html += '<div class="empty-state">Todavía no se ha iniciado ninguna ronda.</div>';
+  } else {
+    html += '<table class="admin-table"><thead><tr><th>Tipo</th><th>Iniciada</th><th>Estado</th><th>Cerrada por</th><th></th></tr></thead><tbody>';
+    c.rondas.forEach(r=>{
+      html += `<tr><td>${r.tipo==='trimestral'?'Trimestral':'Anual'}</td><td>${fmtFechaHora(r.iniciada_ts)}</td>
+        <td><span class="pill ${r.cerrada?'on':'off'}">${r.cerrada?'Cerrada':'En curso'}</span></td>
+        <td>${esc(r.cerrada_por_nombre||'')}</td>
+        <td>${r.cerrada?`<button class="btn btn-outline btn-sm" data-doc-ronda="${r.id}">📄 Documento</button>`:''}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  }
   html += '</div>';
   return html;
 }
@@ -2145,15 +2321,44 @@ function bindCatalogoEvents(){
   if(btnAddExtintor) btnAddExtintor.onclick = async ()=>{
     const numero = document.getElementById('nex-numero').value.trim();
     const tipo = document.getElementById('nex-tipo').value.trim();
+    const eficacia = document.getElementById('nex-eficacia').value.trim();
     const ubicacion = document.getElementById('nex-ubicacion').value.trim();
-    const fecha_fabricacion = document.getElementById('nex-fabricacion').value || null;
-    const fecha_retimbrado = document.getElementById('nex-retimbrado').value || null;
-    if(!numero){ toast('Introduce un número de extintor','error'); return; }
-    const { error } = await sb.from('mant_extintores').insert({ numero, tipo:tipo||null, ubicacion:ubicacion||null, fecha_fabricacion, fecha_retimbrado });
+    const anioRaw = document.getElementById('nex-anio').value;
+    const ultimo_retimbre = document.getElementById('nex-ultimo').value || null;
+    const proximo_retimbre = document.getElementById('nex-proximo').value || null;
+    if(!numero){ toast('Introduce un número de placa','error'); return; }
+    const { error } = await sb.from('mant_extintores').insert({
+      numero, tipo:tipo||null, eficacia:eficacia||null, ubicacion:ubicacion||null,
+      anio_fabricacion: anioRaw===''?null:parseInt(anioRaw,10), ultimo_retimbre, proximo_retimbre,
+    });
     if(error){ toast('Error: '+error.message,'error'); return; }
     c.extintores=null; await ensureCatalogoLoaded(); drawCatalogo();
     toast('Extintor dado de alta','success');
   };
+  document.querySelectorAll('[data-fecha-extintor]').forEach(inp=>{
+    inp.onchange = async ()=>{
+      const [id, campo] = inp.dataset.fechaExtintor.split('|');
+      const e = c.extintores.find(x=>x.id===id);
+      const valor = inp.value || null;
+      const { error } = await sb.from('mant_extintores').update({ [campo]: valor }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); inp.value = e[campo]||''; return; }
+      e[campo] = valor;
+      toast('Fecha actualizada','success');
+    };
+  });
+  document.querySelectorAll('[data-doc-ronda]').forEach(b=>{
+    b.onclick = ()=>{
+      const id = b.dataset.docRonda;
+      const ronda = c.rondas.find(x=>x.id===id);
+      const win = window.open('', '_blank');
+      if(win) win.document.write('<p style="font-family:sans-serif;padding:24px;">Generando documento…</p>');
+      (async ()=>{
+        const { data:revs } = await sb.from('mant_extintor_revisiones').select('*, mant_extintor_revision_respuestas(*)').eq('ronda_id', id);
+        if(win && !win.closed){ escribirDocumentoRonda(win, ronda, c.extintores||[], revs||[]); }
+        else { toast('El navegador bloqueó la ventana del documento.','error'); }
+      })();
+    };
+  });
   document.querySelectorAll('[data-toggle-extintor]').forEach(b=>{
     b.onclick = async ()=>{
       const id=b.dataset.toggleExtintor; const e=c.extintores.find(x=>x.id===id);
