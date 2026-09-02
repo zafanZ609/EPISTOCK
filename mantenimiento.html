@@ -318,6 +318,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const TIPOS_MANTENIMIENTO = [
   {code:'lineas_fabricacion', label:'Líneas de Fabricación', icon:'⚙️'},
   {code:'carretillas', label:'Carretillas y Transpaletas', icon:'🚜'},
+  {code:'bastidores', label:'Bastidores', icon:'🖨️'},
   {code:'extintores', label:'Extintores', icon:'🧯'},
   {code:'compresores', label:'Compresores', icon:'💨'},
   {code:'gas_quemadores', label:'Instalaciones de Gas y Quemadores', icon:'🔥'},
@@ -365,6 +366,8 @@ const state = {
     vehiculos:null, vehiculoElementos:null, vehiculoSel:null,
     extintores:null, checklist:null, rondas:null,
     repuestos:null, tareaRepuestos:null, repuestoEditId:null,
+    bastidores:null, bastidorDocumentos:null, bastidorPiezas:null, bastidorSel:null, bastidorEditId:null,
+    piezas3d:null, piezaEditId:null, producciones:null,
   },
   accesos:null,
   accesosPermisos:null,
@@ -666,6 +669,10 @@ function newWizardState(){
     extintores:null, checklist:null, respuestas:{},
     extRondaTipo:null, extRonda:null, extRondaRevisiones:null, extRondaExtintorId:null,
     simpleSubtipo:null, simpleTitulo:'', simpleDescripcion:'', simpleEmpresa:'',
+    bastidorSubmodo:null,
+    piezas3dList:null, fabCantidades:{}, fabObservaciones:'',
+    bastidoresList:null, bastidorSelId:null, bastLimpieza:false, bastLimpiezaTipo:null, bastReparacion:false,
+    bastidorPiezasCache:null, bastPiezaCantidades:{}, bastObservaciones:'',
   };
 }
 
@@ -698,6 +705,7 @@ function drawWizard(){
   if(!w.tipoMant){ el.innerHTML = drawTipoSelector(w); bindTipoSelectorEvents(); return; }
   if(w.tipoMant==='lineas_fabricacion'){ el.innerHTML = drawArbolFlow(w); bindArbolFlowEvents(); }
   else if(w.tipoMant==='carretillas'){ el.innerHTML = drawCarretillasFlow(w); bindCarretillasFlowEvents(); }
+  else if(w.tipoMant==='bastidores'){ el.innerHTML = drawBastidoresFlow(w); bindBastidoresFlowEvents(); }
   else if(w.tipoMant==='extintores'){ el.innerHTML = drawExtintoresFlow(w); bindExtintoresEvents(); }
   else { el.innerHTML = drawSimpleFlow(w); bindSimpleFlowEvents(); }
 }
@@ -1163,6 +1171,278 @@ async function saveCarretillaExterno(){
   }
 }
 
+/* ---------- Bastidores ---------- */
+function drawBastidoresFlow(w){
+  let html = '<div class="card">';
+  html += wizardBackHeader('Bastidores');
+  html += '<div class="section-title">¿Qué vas a hacer?</div>';
+  html += `<div class="tipo-row">
+    <button class="tipo-btn preventivo ${w.bastidorSubmodo==='fabricacion'?'selected':''}" data-bastmodo="fabricacion">🖨️ Fabricación de piezas 3D</button>
+    <button class="tipo-btn correctivo ${w.bastidorSubmodo==='mantenimiento'?'selected':''}" data-bastmodo="mantenimiento">🛠️ Mantenimiento de bastidores</button>
+  </div>`;
+  if(w.bastidorSubmodo==='fabricacion') html += drawFabricacionForm(w);
+  else if(w.bastidorSubmodo==='mantenimiento') html += drawMantBastidorForm(w);
+  html += '</div>';
+  return html;
+}
+
+function drawFabricacionForm(w){
+  let html = '<div class="section-title" style="margin-top:18px;">Piezas fabricadas</div>';
+  if(w.piezas3dList===null){ return html + '<div class="spinner"></div>'; }
+  const activas = w.piezas3dList.filter(p=>p.activo);
+  if(activas.length===0){ return html + '<div class="empty-state">Todavía no hay piezas 3D en el catálogo. Añádelas desde Catálogo → Piezas 3D.</div>'; }
+  html += '<div class="nivel-list">';
+  activas.forEach(p=>{
+    const cant = w.fabCantidades[p.id] || 0;
+    const stockBadge = (p.stock!==null && p.stock!==undefined) ? `<span class="stock-badge">Stock actual: ${p.stock}</span>` : '';
+    html += `<div class="nivel-card leaf-wrap">
+      <div style="display:flex;gap:10px;align-items:center;padding:10px 12px;">
+        ${p.foto_url?`<img class="nivel-photo" src="${esc(p.foto_url)}">`:'<div class="nivel-photo ph">🧩</div>'}
+        <div class="nivel-info" style="flex:1;">
+          <div class="nivel-card-name">${esc(p.referencia)}</div>
+          ${p.descripcion?`<div class="nivel-meta">${esc(p.descripcion)}</div>`:''}
+          ${stockBadge}
+        </div>
+        <div>
+          <label class="hint" style="display:block;">Cantidad fabricada</label>
+          <input type="number" min="0" class="fab-qty" data-fabqty="${p.id}" value="${cant||''}" placeholder="0" style="width:70px;padding:6px 8px;border:1.5px solid var(--steel-200);border-radius:7px;">
+        </div>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  html += '<div class="section-title" style="margin-top:18px;">Observaciones (opcional)</div>';
+  html += `<textarea id="wiz-fab-obs" placeholder="Notas adicionales...">${esc(w.fabObservaciones)}</textarea>`;
+  const totalPiezas = Object.values(w.fabCantidades).reduce((a,b)=>a+(b||0),0);
+  html += `<div style="margin-top:18px;"><button class="btn btn-amber" id="btn-guardar-fabricacion" ${totalPiezas>0?'':'disabled'}>Guardar y generar documento</button></div>`;
+  return html;
+}
+
+function drawMantBastidorForm(w){
+  let html = '<div class="section-title" style="margin-top:18px;">Bastidor</div>';
+  if(w.bastidoresList===null){ return html + '<div class="spinner"></div>'; }
+  if(w.bastidoresList.length===0){ return html + '<div class="empty-state">Todavía no hay bastidores dados de alta. Añádelos desde Catálogo → Bastidores.</div>'; }
+  html += '<div class="elemento-grid" id="wiz-bastidores">';
+  html += w.bastidoresList.map(b=>`<button class="elemento-card ${w.bastidorSelId===b.id?'active':''}" data-bastidor="${b.id}">
+    ${b.foto_url?`<img class="nivel-photo" src="${esc(b.foto_url)}" style="margin-bottom:6px;">`:''}
+    <span class="elemento-card-name">${esc(b.nombre)}</span>
+  </button>`).join('');
+  html += '</div>';
+  if(!w.bastidorSelId) return html;
+
+  html += '<div class="section-title" style="margin-top:18px;">Tipo de intervención</div>';
+  html += `<div class="chip-row">
+    <button class="chip-btn ${w.bastLimpieza?'selected':''}" data-toggle-limpieza="1">🧹 Limpieza</button>
+    <button class="chip-btn ${w.bastReparacion?'selected':''}" data-toggle-reparacion="1">🔧 Reparación</button>
+  </div>`;
+
+  if(w.bastLimpieza){
+    html += '<div class="section-title" style="margin-top:14px;">Limpieza</div>';
+    html += `<div class="tipo-row">
+      <button class="tipo-btn preventivo ${w.bastLimpiezaTipo==='parcial'?'selected':''}" data-limptipo="parcial">Parcial</button>
+      <button class="tipo-btn correctivo ${w.bastLimpiezaTipo==='total'?'selected':''}" data-limptipo="total">Total</button>
+    </div>`;
+  }
+
+  if(w.bastReparacion){
+    html += '<div class="section-title" style="margin-top:14px;">Repuestos usados</div>';
+    if(w.bastidorPiezasCache===null){ html += '<div class="spinner"></div>'; }
+    else if(w.bastidorPiezasCache.length===0){ html += '<div class="empty-state">Este bastidor no tiene piezas 3D asociadas. Asígnalas desde Catálogo → Bastidores.</div>'; }
+    else {
+      html += '<div class="nivel-list">';
+      w.bastidorPiezasCache.forEach(p=>{
+        const cant = w.bastPiezaCantidades[p.id] || 0;
+        const checked = cant>0;
+        const stockBadge = (p.stock!==null && p.stock!==undefined) ? `<span class="stock-badge ${p.stock<=0?'zero':p.stock<=2?'low':''}">Stock: ${p.stock}</span>` : '';
+        html += `<div class="nivel-card leaf-wrap ${checked?'selected':''}">
+          <div style="display:flex;gap:10px;align-items:center;padding:10px 12px;">
+            <label class="leaf-toggle" style="flex:1;">
+              <input type="checkbox" data-pieza-check="${p.id}" ${checked?'checked':''}>
+              ${p.foto_url?`<img class="nivel-photo" src="${esc(p.foto_url)}">`:'<div class="nivel-photo ph">🧩</div>'}
+              <div class="nivel-info">
+                <div class="nivel-card-name">${esc(p.referencia)}</div>
+                ${p.descripcion?`<div class="nivel-meta">${esc(p.descripcion)}</div>`:''}
+                ${stockBadge}
+              </div>
+            </label>
+            <input type="number" min="1" class="pieza-qty" data-pieza-qty="${p.id}" value="${cant||1}" ${checked?'':'disabled'} style="width:60px;padding:6px 8px;border:1.5px solid var(--steel-200);border-radius:7px;">
+          </div>
+        </div>`;
+      });
+      html += '</div>';
+    }
+  }
+
+  html += '<div class="section-title" style="margin-top:18px;">Observaciones (opcional)</div>';
+  html += `<textarea id="wiz-bast-obs" placeholder="Notas adicionales...">${esc(w.bastObservaciones)}</textarea>`;
+
+  const limpiezaOk = !w.bastLimpieza || !!w.bastLimpiezaTipo;
+  const reparacionOk = !w.bastReparacion || Object.values(w.bastPiezaCantidades).some(c=>c>0);
+  const canSave = (w.bastLimpieza || w.bastReparacion) && limpiezaOk && reparacionOk;
+  html += `<div style="margin-top:18px;"><button class="btn btn-amber" id="btn-guardar-bastidor" ${canSave?'':'disabled'}>Guardar registro</button></div>`;
+  return html;
+}
+
+function bindBastidoresFlowEvents(){
+  const w = state.wizard;
+  bindBackHeader(w);
+  document.querySelectorAll('[data-bastmodo]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      w.bastidorSubmodo = btn.dataset.bastmodo;
+      drawWizard();
+      if(w.bastidorSubmodo==='fabricacion' && w.piezas3dList===null){
+        const { data } = await sb.from('mant_piezas3d').select('*').order('referencia');
+        w.piezas3dList = data||[];
+        drawWizard();
+      } else if(w.bastidorSubmodo==='mantenimiento' && w.bastidoresList===null){
+        const { data } = await sb.from('mant_bastidores').select('*').eq('activo',true).order('nombre');
+        w.bastidoresList = data||[];
+        drawWizard();
+      }
+    };
+  });
+  if(w.bastidorSubmodo==='fabricacion') bindFabricacionFormEvents(w);
+  else if(w.bastidorSubmodo==='mantenimiento') bindMantBastidorEvents(w);
+}
+
+function bindFabricacionFormEvents(w){
+  document.querySelectorAll('[data-fabqty]').forEach(inp=>{
+    inp.oninput = ()=>{
+      const v = parseInt(inp.value,10);
+      w.fabCantidades[inp.dataset.fabqty] = (isNaN(v)||v<0)?0:v;
+      const btn = document.getElementById('btn-guardar-fabricacion');
+      if(btn){ const total = Object.values(w.fabCantidades).reduce((a,b)=>a+(b||0),0); btn.disabled = !(total>0); }
+    };
+  });
+  const obs = document.getElementById('wiz-fab-obs'); if(obs) obs.oninput = e=> w.fabObservaciones = e.target.value;
+  const btn = document.getElementById('btn-guardar-fabricacion'); if(btn) btn.onclick = guardarFabricacionPiezas3d;
+}
+
+function bindMantBastidorEvents(w){
+  document.querySelectorAll('#wiz-bastidores .elemento-card').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.bastidor;
+      if(w.bastidorSelId===id) return;
+      w.bastidorSelId=id; w.bastLimpieza=false; w.bastLimpiezaTipo=null; w.bastReparacion=false;
+      w.bastidorPiezasCache=null; w.bastPiezaCantidades={}; w.bastObservaciones='';
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('[data-toggle-limpieza]').forEach(btn=>{
+    btn.onclick = ()=>{ w.bastLimpieza = !w.bastLimpieza; if(!w.bastLimpieza) w.bastLimpiezaTipo=null; drawWizard(); };
+  });
+  document.querySelectorAll('[data-toggle-reparacion]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      w.bastReparacion = !w.bastReparacion;
+      drawWizard();
+      if(w.bastReparacion && w.bastidorPiezasCache===null){
+        const { data:links } = await sb.from('mant_bastidor_piezas').select('pieza_id, mant_piezas3d(*)').eq('bastidor_id', w.bastidorSelId);
+        w.bastidorPiezasCache = (links||[]).map(l=>l.mant_piezas3d).filter(p=>p && p.activo);
+        drawWizard();
+      }
+    };
+  });
+  document.querySelectorAll('[data-limptipo]').forEach(btn=>{
+    btn.onclick = ()=>{ w.bastLimpiezaTipo = btn.dataset.limptipo; drawWizard(); };
+  });
+  document.querySelectorAll('[data-pieza-check]').forEach(cb=>{
+    cb.onchange = ()=>{
+      const id = cb.dataset.piezaCheck;
+      if(cb.checked){ w.bastPiezaCantidades[id] = 1; } else { delete w.bastPiezaCantidades[id]; }
+      drawWizard();
+    };
+  });
+  document.querySelectorAll('[data-pieza-qty]').forEach(inp=>{
+    inp.oninput = ()=>{
+      const id = inp.dataset.piezaQty;
+      const v = parseInt(inp.value,10);
+      w.bastPiezaCantidades[id] = (isNaN(v)||v<1)?1:v;
+      const btn = document.getElementById('btn-guardar-bastidor');
+      if(btn){
+        const limpiezaOk = !w.bastLimpieza || !!w.bastLimpiezaTipo;
+        const reparacionOk = !w.bastReparacion || Object.values(w.bastPiezaCantidades).some(c=>c>0);
+        btn.disabled = !((w.bastLimpieza||w.bastReparacion) && limpiezaOk && reparacionOk);
+      }
+    };
+  });
+  const obs = document.getElementById('wiz-bast-obs'); if(obs) obs.oninput = e=> w.bastObservaciones = e.target.value;
+  const btn = document.getElementById('btn-guardar-bastidor'); if(btn) btn.onclick = guardarMantenimientoBastidor;
+}
+
+async function guardarFabricacionPiezas3d(){
+  const w = state.wizard;
+  const btn = document.getElementById('btn-guardar-fabricacion');
+  const win = window.open('', '_blank');
+  if(win) win.document.write('<p style="font-family:sans-serif;padding:24px;">Generando documento…</p>');
+  btn.disabled=true; btn.textContent='Guardando…';
+  const items = Object.entries(w.fabCantidades).filter(([id,c])=>c>0).map(([id,c])=>{
+    const p = (w.piezas3dList||[]).find(x=>x.id===id);
+    return { pieza_id:id, referencia: p?p.referencia:null, cantidad:c };
+  });
+  try{
+    const { data:fabId, error } = await sb.rpc('registrar_fabricacion_piezas3d', {
+      p_observaciones: w.fabObservaciones || null,
+      p_items: items,
+    });
+    if(error) throw error;
+    toast('Producción registrada','success');
+    state.misRegistros=null; state.historial=null;
+    if(state.catalogo.piezas3d){ items.forEach(it=>{ const p=state.catalogo.piezas3d.find(x=>x.id===it.pieza_id); if(p) p.stock=(p.stock||0)+it.cantidad; }); }
+    state.catalogo.producciones = null;
+    if(win && !win.closed){ escribirDocumentoFabricacion(win, { id:fabId, ts:new Date().toISOString(), trabajador_nombre: state.trabajador.nombre, observaciones: w.fabObservaciones||null }, items); }
+    else { toast('El documento no se pudo abrir automáticamente. Genéralo desde Catálogo → Piezas 3D → Producciones.','error'); }
+    w.fabCantidades = {}; w.fabObservaciones=''; w.piezas3dList=null; w.bastidorSubmodo=null;
+    drawWizard();
+  }catch(e){
+    if(win && !win.closed) win.close();
+    toast('Error al guardar: '+e.message,'error');
+    btn.disabled=false; btn.textContent='Guardar y generar documento';
+  }
+}
+
+function escribirDocumentoFabricacion(win, fab, items){
+  const fecha = fmtFechaHora(fab.ts);
+  const estilos = 'body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111;} h1{font-size:18px;margin:0 0 4px;} .meta{font-size:12.5px;color:#555;margin-bottom:16px;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #999;padding:6px 8px;font-size:11.5px;text-align:left;} th{background:#eee;}';
+  const thead = '<tr><th>Referencia</th><th>Cantidad fabricada</th></tr>';
+  const rows = items.map(it=>`<tr><td>${esc(it.referencia||'')}</td><td>${esc(it.cantidad)}</td></tr>`).join('');
+  const bodyHtml = `<h1>Producción de piezas 3D</h1><div class="meta">Fecha: ${esc(fecha)} · Operario: ${esc(fab.trabajador_nombre||'')}</div><table><thead>${thead}</thead><tbody>${rows}</tbody></table>${fab.observaciones?`<div style="margin-top:14px;font-size:12px;"><b>Observaciones:</b> ${esc(fab.observaciones)}</div>`:''}`;
+  win.document.open();
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Producción piezas 3D</title><style>${estilos}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();};<\/script></body></html>`);
+  win.document.close();
+}
+
+async function guardarMantenimientoBastidor(){
+  const w = state.wizard;
+  const btn = document.getElementById('btn-guardar-bastidor');
+  btn.disabled=true; btn.textContent='Guardando…';
+  const bastidor = (w.bastidoresList||[]).find(b=>b.id===w.bastidorSelId);
+  const piezas = Object.entries(w.bastPiezaCantidades).filter(([id,c])=>c>0).map(([id,c])=>{
+    const p = (w.bastidorPiezasCache||[]).find(x=>x.id===id);
+    return { pieza_id:id, referencia: p?p.referencia:null, cantidad:c };
+  });
+  try{
+    const { error } = await sb.rpc('registrar_mantenimiento_bastidor', {
+      p_bastidor_id: w.bastidorSelId,
+      p_bastidor_nombre: bastidor?bastidor.nombre:null,
+      p_limpieza: !!w.bastLimpieza,
+      p_limpieza_tipo: w.bastLimpieza ? w.bastLimpiezaTipo : null,
+      p_reparacion: !!w.bastReparacion,
+      p_observaciones: w.bastObservaciones || null,
+      p_piezas: piezas,
+    });
+    if(error) throw error;
+    toast('Registro guardado correctamente','success');
+    state.misRegistros=null; state.historial=null;
+    if(state.catalogo.piezas3d){ piezas.forEach(it=>{ const p=state.catalogo.piezas3d.find(x=>x.id===it.pieza_id); if(p) p.stock=Math.max((p.stock||0)-it.cantidad,0); }); }
+    w.bastidorSelId=null; w.bastLimpieza=false; w.bastLimpiezaTipo=null; w.bastReparacion=false;
+    w.bastidorPiezasCache=null; w.bastPiezaCantidades={}; w.bastObservaciones='';
+    drawWizard();
+  }catch(e){
+    toast('Error al guardar: '+e.message,'error');
+    btn.disabled=false; btn.textContent='Guardar registro';
+  }
+}
+
 /* ---------- Extintores ---------- */
 async function loadExtintoresList(){
   const w = state.wizard;
@@ -1517,12 +1797,16 @@ async function loadAllEventos(scopeTrabajadorId){
   let qArbol = sb.from('mant_registros').select('*, mant_registro_items(*)').order('ts',{ascending:false}).limit(1000);
   let qExt = sb.from('mant_extintor_revisiones').select('*, mant_extintor_revision_respuestas(*)').order('ts',{ascending:false}).limit(1000);
   let qSimple = sb.from('mant_registros_simple').select('*').order('ts',{ascending:false}).limit(1000);
+  let qFab = sb.from('mant_piezas3d_fabricacion').select('*, mant_piezas3d_fabricacion_items(*)').order('ts',{ascending:false}).limit(1000);
+  let qBast = sb.from('mant_bastidor_registros').select('*, mant_bastidor_registro_piezas(*)').order('ts',{ascending:false}).limit(1000);
   if(scopeTrabajadorId){
     qArbol = qArbol.eq('trabajador_id', scopeTrabajadorId);
     qExt = qExt.eq('trabajador_id', scopeTrabajadorId);
     qSimple = qSimple.eq('trabajador_id', scopeTrabajadorId);
+    qFab = qFab.eq('trabajador_id', scopeTrabajadorId);
+    qBast = qBast.eq('trabajador_id', scopeTrabajadorId);
   }
-  const [{data:arbol}, {data:ext}, {data:simple}] = await Promise.all([qArbol, qExt, qSimple]);
+  const [{data:arbol}, {data:ext}, {data:simple}, {data:fab}, {data:bast}] = await Promise.all([qArbol, qExt, qSimple, qFab, qBast]);
   const rows = [];
   (arbol||[]).forEach(r=>{
     const items = (r.mant_registro_items && r.mant_registro_items.length) ? r.mant_registro_items : [null];
@@ -1580,6 +1864,38 @@ async function loadAllEventos(scopeTrabajadorId){
       observaciones:'',
       adjuntoUrl: r.pdf_url||'', adjuntoTipo: r.pdf_url?'pdf':'',
       sourceTable:'mant_registros_simple', sourceId:r.id,
+    });
+  });
+  (fab||[]).forEach(r=>{
+    const items = r.mant_piezas3d_fabricacion_items||[];
+    const total = items.reduce((a,it)=>a+(it.cantidad||0),0);
+    rows.push({
+      ts: r.ts, tipoCode:'bastidores', tipoLabel:'Bastidores',
+      referenciaAmbito: 'Fabricación de piezas 3D',
+      subtipo: total+' unidad(es), '+items.length+' referencia(s)',
+      numeroEmpleado: r.numero_empleado, operario: r.trabajador_nombre,
+      detalle: items.map(it=>(it.referencia_snapshot||'')+' × '+it.cantidad).join(', '),
+      referencia:'', ubicacion:'',
+      observaciones: r.observaciones||'',
+      adjuntoUrl:'', adjuntoTipo:'',
+      sourceTable:'mant_piezas3d_fabricacion', sourceId:r.id,
+    });
+  });
+  (bast||[]).forEach(r=>{
+    const piezas = r.mant_bastidor_registro_piezas||[];
+    const partes = [];
+    if(r.limpieza) partes.push('Limpieza '+(r.limpieza_tipo==='total'?'total':'parcial'));
+    if(r.reparacion) partes.push('Reparación');
+    rows.push({
+      ts: r.ts, tipoCode:'bastidores', tipoLabel:'Bastidores',
+      referenciaAmbito: r.bastidor_nombre||'',
+      subtipo: partes.join(' + ')||'Mantenimiento',
+      numeroEmpleado: r.numero_empleado, operario: r.trabajador_nombre,
+      detalle: piezas.length ? piezas.map(p=>(p.referencia_snapshot||'')+' × '+p.cantidad).join(', ') : '',
+      referencia:'', ubicacion:'',
+      observaciones: r.observaciones||'',
+      adjuntoUrl:'', adjuntoTipo:'',
+      sourceTable:'mant_bastidor_registros', sourceId:r.id,
     });
   });
   rows.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
@@ -1746,12 +2062,17 @@ async function ensureCatalogoLoaded(){
   if(c.rondas===null){ const { data } = await sb.from('mant_extintor_rondas').select('*').order('iniciada_ts',{ascending:false}).limit(30); c.rondas = data||[]; }
   if(c.repuestos===null){ const { data } = await sb.from('mant_repuestos').select('*').order('referencia'); c.repuestos = data||[]; }
   if(c.tareaRepuestos===null){ const { data } = await sb.from('mant_tarea_repuestos').select('*'); c.tareaRepuestos = data||[]; }
+  if(c.bastidores===null){ const { data } = await sb.from('mant_bastidores').select('*').order('nombre'); c.bastidores = data||[]; }
+  if(c.bastidorDocumentos===null){ const { data } = await sb.from('mant_bastidor_documentos').select('*').order('created_at'); c.bastidorDocumentos = data||[]; }
+  if(c.piezas3d===null){ const { data } = await sb.from('mant_piezas3d').select('*').order('referencia'); c.piezas3d = data||[]; }
+  if(c.bastidorPiezas===null){ const { data } = await sb.from('mant_bastidor_piezas').select('*'); c.bastidorPiezas = data||[]; }
+  if(c.producciones===null){ const { data } = await sb.from('mant_piezas3d_fabricacion').select('*, mant_piezas3d_fabricacion_items(*)').order('ts',{ascending:false}).limit(30); c.producciones = data||[]; }
 }
 
 function drawCatalogo(){
   const el = document.getElementById('tab-content');
   const c = state.catalogo;
-  const catLabels = {lineas:'Líneas', elementos:'Elementos', tareas:'Árbol de tareas', vehiculos:'Vehículos', extintores:'Extintores', repuestos:'Repuestos'};
+  const catLabels = {lineas:'Líneas', elementos:'Elementos', tareas:'Árbol de tareas', vehiculos:'Vehículos', extintores:'Extintores', repuestos:'Repuestos', bastidores:'Bastidores', piezas3d:'Piezas 3D'};
   let html = '<div class="subtabs">';
   html += Object.keys(catLabels).map(k=>`<button data-ctab="${k}" class="${state.catalogoTab===k?'active':''}">${catLabels[k]}</button>`).join('');
   html += '</div>';
@@ -1760,7 +2081,9 @@ function drawCatalogo(){
   else if(state.catalogoTab==='tareas') html += drawCatTareas();
   else if(state.catalogoTab==='vehiculos') html += drawCatVehiculos();
   else if(state.catalogoTab==='extintores') html += drawCatExtintores();
-  else html += drawCatRepuestos();
+  else if(state.catalogoTab==='repuestos') html += drawCatRepuestos();
+  else if(state.catalogoTab==='bastidores') html += drawCatBastidores();
+  else html += drawCatPiezas3D();
   el.innerHTML = html;
   bindCatalogoEvents();
 }
@@ -2068,10 +2391,176 @@ function renderRepuestoEditBox(r){
   </div>`;
 }
 
+function drawCatBastidores(){
+  const c = state.catalogo;
+  let html = '<div class="card"><h2>Bastidores</h2>';
+  html += '<div class="hint" style="margin-bottom:12px;">Da de alta cada bastidor con su foto, stock inicial y documentos (planos). Asigna las piezas de impresión 3D que puede llevar cada uno desde el botón ⚙.</div>';
+  if(c.bastidores===null){ html += '<div class="spinner"></div></div>'; return html; }
+  if(c.bastidores.length===0){ html += '<div class="empty-state">Todavía no hay bastidores. Añade el primero abajo.</div>'; }
+  else {
+    html += '<table class="admin-table"><thead><tr><th></th><th>Nombre</th><th>Stock</th><th>Estado</th><th></th></tr></thead><tbody>';
+    c.bastidores.forEach(b=>{
+      const editing = c.bastidorEditId===b.id;
+      const managing = c.bastidorSel===b.id;
+      const hasStock = b.stock!==null && b.stock!==undefined;
+      html += `<tr>
+        <td>${b.foto_url?`<img class="thumb-preview" src="${esc(b.foto_url)}">`:''}</td>
+        <td><b>${esc(b.nombre)}</b></td>
+        <td>${hasStock?`<div style="display:flex;gap:6px;align-items:center;">
+            <span class="stock-badge ${b.stock<=0?'zero':b.stock<=2?'low':''}">${b.stock}</span>
+            <input type="number" min="1" value="1" id="bst-${b.id}" style="width:52px;padding:5px 6px;border:1.5px solid var(--steel-200);border-radius:7px;font-size:12px;">
+            <button class="btn btn-outline btn-sm" data-reponer-bastidor="${b.id}">+Reponer</button>
+          </div>` : '<span class="hint">— (sin stock)</span>'}</td>
+        <td><span class="pill ${b.activo?'on':'off'}">${b.activo?'Activo':'Inactivo'}</span></td>
+        <td>
+          <button class="icon-btn" data-edit-bastidor="${b.id}" title="Editar">✎</button>
+          <button class="icon-btn" data-manage-bastidor="${b.id}" title="Documentos y piezas">⚙</button>
+          <button class="icon-btn" data-toggle-bastidor="${b.id}" title="${b.activo?'Desactivar':'Activar'}">${b.activo?'⏸':'▶'}</button>
+          <button class="icon-btn" data-delete-bastidor="${b.id}" title="Eliminar">🗑</button>
+        </td>
+      </tr>`;
+      if(editing) html += `<tr><td colspan="5" style="padding:0;">${renderBastidorEditBox(b)}</td></tr>`;
+      if(managing) html += `<tr><td colspan="5" style="padding:0;">${renderBastidorManageBox(b)}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  }
+  html += `<div class="inline-form">
+    <div class="field"><label>Nombre</label><input id="nb-nombre" placeholder="Ej. Bastidor Modelo A"></div>
+    <div class="field"><label>Stock inicial</label><input id="nb-stock" type="number" min="0" placeholder="Opcional"></div>
+    <div class="field"><label>Foto</label><input id="nb-foto" type="file" accept="image/*"></div>
+    <button class="btn btn-primary btn-sm" id="btn-add-bastidor">+ Añadir bastidor</button>
+  </div>`;
+  html += '</div>';
+  return html;
+}
+
+function renderBastidorEditBox(b){
+  return `<div class="task-edit-box">
+    <div class="row">
+      <input id="eb-nombre" value="${esc(b.nombre)}" placeholder="Nombre">
+      <input id="eb-stock" type="number" min="0" value="${(b.stock!==null && b.stock!==undefined)?b.stock:''}" placeholder="Stock">
+    </div>
+    <div class="row" style="align-items:center;">
+      <label class="hint" style="width:100%;">Foto</label>
+      <input id="eb-foto" type="file" accept="image/*">
+      ${b.foto_url?`<img class="thumb-preview" src="${esc(b.foto_url)}">`:''}
+    </div>
+    <div class="row">
+      <button class="btn btn-primary btn-sm" data-save-bastidor="${b.id}">Guardar</button>
+      <button class="btn btn-outline btn-sm" data-cancel-edit-bastidor="1">Cancelar</button>
+    </div>
+  </div>`;
+}
+
+function renderBastidorManageBox(b){
+  const c = state.catalogo;
+  const docs = (c.bastidorDocumentos||[]).filter(d=>d.bastidor_id===b.id);
+  const linkedIds = new Set((c.bastidorPiezas||[]).filter(bp=>bp.bastidor_id===b.id).map(bp=>bp.pieza_id));
+  const piezasActivas = (c.piezas3d||[]).filter(p=>p.activo);
+  let html = `<div class="task-edit-box"><h3>Documentos de "${esc(b.nombre)}" (planos, PDF)</h3>`;
+  if(docs.length===0){ html += '<div class="hint">Todavía no hay documentos.</div>'; }
+  else {
+    html += '<div class="chip-row" style="margin-bottom:10px;">';
+    docs.forEach(d=>{
+      html += `<span class="sel-chip"><a href="${esc(d.pdf_url)}" target="_blank" rel="noopener" style="color:inherit;">📄 ${esc(d.nombre||'Documento')}</a><button data-delete-documento="${d.id}">✕</button></span>`;
+    });
+    html += '</div>';
+  }
+  html += `<div class="row">
+      <input id="bd-nombre-${b.id}" placeholder="Nombre del documento (ej. Plano despiece)">
+      <input id="bd-pdf-${b.id}" type="file" accept="application/pdf">
+      <button class="btn btn-outline btn-sm" data-add-documento="${b.id}">+ Añadir PDF</button>
+    </div>`;
+  html += `<h3 style="margin-top:16px;">Piezas de impresión 3D asociadas</h3>`;
+  if(piezasActivas.length===0){ html += '<div class="hint">Todavía no hay piezas en el catálogo. Créalas desde la pestaña "Piezas 3D".</div>'; }
+  else {
+    html += `<div class="chip-row">${piezasActivas.map(p=>`<button class="chip-btn ${linkedIds.has(p.id)?'selected':''}" data-toggle-bastidor-pieza="${b.id}|${p.id}">${esc(p.referencia)}</button>`).join('')}</div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function drawCatPiezas3D(){
+  const c = state.catalogo;
+  let html = '<div class="card"><h2>Piezas 3D</h2>';
+  html += '<div class="hint" style="margin-bottom:12px;">Catálogo único de piezas de impresión 3D. Se asocian a uno o varios bastidores desde la pestaña "Bastidores". El stock sube al fabricar piezas y baja al usarlas en un mantenimiento.</div>';
+  if(c.piezas3d===null){ html += '<div class="spinner"></div></div>'; return html; }
+  if(c.piezas3d.length===0){ html += '<div class="empty-state">Todavía no hay piezas. Añade la primera abajo.</div>'; }
+  else {
+    html += '<table class="admin-table"><thead><tr><th></th><th>Referencia</th><th>Descripción</th><th>Stock</th><th>Estado</th><th></th></tr></thead><tbody>';
+    c.piezas3d.forEach(p=>{
+      const editing = c.piezaEditId===p.id;
+      const hasStock = p.stock!==null && p.stock!==undefined;
+      html += `<tr>
+        <td>${p.foto_url?`<img class="thumb-preview" src="${esc(p.foto_url)}">`:''}</td>
+        <td><b>${esc(p.referencia)}</b></td>
+        <td>${esc(p.descripcion||'')}</td>
+        <td>${hasStock?`<div style="display:flex;gap:6px;align-items:center;">
+            <span class="stock-badge ${p.stock<=0?'zero':p.stock<=2?'low':''}">${p.stock}</span>
+            <input type="number" min="1" value="1" id="pz-${p.id}" style="width:52px;padding:5px 6px;border:1.5px solid var(--steel-200);border-radius:7px;font-size:12px;">
+            <button class="btn btn-outline btn-sm" data-reponer-pieza="${p.id}">+Reponer</button>
+          </div>` : '<span class="hint">— (sin stock)</span>'}</td>
+        <td><span class="pill ${p.activo?'on':'off'}">${p.activo?'Activo':'Inactivo'}</span></td>
+        <td>
+          <button class="icon-btn" data-edit-pieza="${p.id}" title="Editar">✎</button>
+          <button class="icon-btn" data-toggle-pieza="${p.id}" title="${p.activo?'Desactivar':'Activar'}">${p.activo?'⏸':'▶'}</button>
+          <button class="icon-btn" data-delete-pieza="${p.id}" title="Eliminar">🗑</button>
+        </td>
+      </tr>`;
+      if(editing) html += `<tr><td colspan="6" style="padding:0;">${renderPiezaEditBox(p)}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  }
+  html += `<div class="inline-form">
+    <div class="field"><label>Referencia</label><input id="np-referencia" placeholder="Ej. PZ-BAST-01"></div>
+    <div class="field"><label>Descripción</label><input id="np-descripcion" placeholder="Ej. Soporte lateral"></div>
+    <div class="field"><label>Stock inicial</label><input id="np-stock" type="number" min="0" placeholder="Opcional"></div>
+    <div class="field"><label>Foto</label><input id="np-foto" type="file" accept="image/*"></div>
+    <button class="btn btn-primary btn-sm" id="btn-add-pieza">+ Añadir pieza</button>
+  </div>`;
+
+  html += '<h3 style="margin-top:22px;">Producciones registradas</h3>';
+  html += '<div class="hint" style="margin-bottom:10px;">Cada vez que un operario guarda una fabricación de piezas se registra aquí. Puedes regenerar su documento.</div>';
+  if(!c.producciones || c.producciones.length===0){
+    html += '<div class="empty-state">Todavía no se ha registrado ninguna producción.</div>';
+  } else {
+    html += '<table class="admin-table"><thead><tr><th>Fecha</th><th>Operario</th><th>Piezas</th><th></th></tr></thead><tbody>';
+    c.producciones.forEach(f=>{
+      const items = f.mant_piezas3d_fabricacion_items || [];
+      const totalPiezas = items.reduce((a,it)=>a+(it.cantidad||0),0);
+      html += `<tr><td>${fmtFechaHora(f.ts)}</td><td>${esc(f.trabajador_nombre||'')}</td><td>${totalPiezas} unidad(es), ${items.length} referencia(s)</td>
+        <td><button class="btn btn-outline btn-sm" data-doc-fabricacion="${f.id}">📄 Documento</button></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderPiezaEditBox(p){
+  return `<div class="task-edit-box">
+    <div class="row">
+      <input id="ep-referencia" value="${esc(p.referencia)}" placeholder="Referencia">
+      <input id="ep-descripcion" value="${esc(p.descripcion||'')}" placeholder="Descripción">
+      <input id="ep-stock" type="number" min="0" value="${(p.stock!==null && p.stock!==undefined)?p.stock:''}" placeholder="Stock">
+    </div>
+    <div class="row" style="align-items:center;">
+      <label class="hint" style="width:100%;">Foto</label>
+      <input id="ep-foto" type="file" accept="image/*">
+      ${p.foto_url?`<img class="thumb-preview" src="${esc(p.foto_url)}">`:''}
+    </div>
+    <div class="row">
+      <button class="btn btn-primary btn-sm" data-save-pieza="${p.id}">Guardar</button>
+      <button class="btn btn-outline btn-sm" data-cancel-edit-pieza="1">Cancelar</button>
+    </div>
+  </div>`;
+}
+
 function bindCatalogoEvents(){
   const c = state.catalogo;
   document.querySelectorAll('[data-ctab]').forEach(b=>{
-    b.onclick = ()=>{ state.catalogoTab = b.dataset.ctab; c.elementoSel=null; c.editingTareaId=null; c.addingSubTo=null; c.vehiculoSel=null; c.repuestoEditId=null; drawCatalogo(); };
+    b.onclick = ()=>{ state.catalogoTab = b.dataset.ctab; c.elementoSel=null; c.editingTareaId=null; c.addingSubTo=null; c.vehiculoSel=null; c.repuestoEditId=null; c.bastidorSel=null; c.bastidorEditId=null; c.piezaEditId=null; drawCatalogo(); };
   });
 
   const btnAddLinea = document.getElementById('btn-add-linea');
@@ -2495,6 +2984,264 @@ function bindCatalogoEvents(){
       const item = c.repuestos.find(x=>x.id===id);
       const nuevoStock = (item.stock||0) + cantidad;
       const { error } = await sb.from('mant_repuestos').update({ stock: nuevoStock }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      item.stock = nuevoStock;
+      drawCatalogo();
+      toast('Stock repuesto','success');
+    };
+  });
+
+  // Bastidores
+  const btnAddBastidor = document.getElementById('btn-add-bastidor');
+  if(btnAddBastidor) btnAddBastidor.onclick = async ()=>{
+    const nombre = document.getElementById('nb-nombre').value.trim();
+    const stockRaw = document.getElementById('nb-stock').value;
+    const fotoInput = document.getElementById('nb-foto');
+    if(!nombre){ toast('Introduce un nombre','error'); return; }
+    btnAddBastidor.disabled = true; btnAddBastidor.textContent='Guardando…';
+    let foto_url = null;
+    if(fotoInput.files && fotoInput.files[0]){
+      const file = fotoInput.files[0];
+      const ext = (file.name.split('.').pop()||'jpg');
+      const path = 'bastidores/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
+      const { error:upErr } = await sb.storage.from('mant-fotos').upload(path, file);
+      if(upErr){ toast('Error subiendo foto: '+upErr.message,'error'); btnAddBastidor.disabled=false; btnAddBastidor.textContent='+ Añadir bastidor'; return; }
+      const { data:pub } = sb.storage.from('mant-fotos').getPublicUrl(path);
+      foto_url = pub.publicUrl;
+    }
+    const { error } = await sb.from('mant_bastidores').insert({
+      nombre, stock: stockRaw===''?null:parseInt(stockRaw,10), foto_url,
+    });
+    if(error){ toast('Error: '+error.message,'error'); btnAddBastidor.disabled=false; btnAddBastidor.textContent='+ Añadir bastidor'; return; }
+    c.bastidores=null; await ensureCatalogoLoaded(); drawCatalogo();
+    toast('Bastidor añadido','success');
+  };
+  document.querySelectorAll('[data-edit-bastidor]').forEach(b=>{
+    b.onclick = ()=>{ c.bastidorEditId = (c.bastidorEditId===b.dataset.editBastidor)?null:b.dataset.editBastidor; c.bastidorSel=null; drawCatalogo(); };
+  });
+  document.querySelectorAll('[data-cancel-edit-bastidor]').forEach(b=>{ b.onclick=()=>{ c.bastidorEditId=null; drawCatalogo(); }; });
+  document.querySelectorAll('[data-save-bastidor]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.saveBastidor;
+      const nombre = document.getElementById('eb-nombre').value.trim();
+      const stockRaw = document.getElementById('eb-stock').value;
+      const fotoInput = document.getElementById('eb-foto');
+      if(!nombre){ toast('Introduce un nombre','error'); return; }
+      b.disabled = true; b.textContent='Guardando…';
+      let foto_url;
+      if(fotoInput.files && fotoInput.files[0]){
+        const file = fotoInput.files[0];
+        const ext = (file.name.split('.').pop()||'jpg');
+        const path = 'bastidores/'+id+'-'+Date.now()+'.'+ext;
+        const { error:upErr } = await sb.storage.from('mant-fotos').upload(path, file, { upsert:true });
+        if(upErr){ toast('Error subiendo foto: '+upErr.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
+        const { data:pub } = sb.storage.from('mant-fotos').getPublicUrl(path);
+        foto_url = pub.publicUrl;
+      }
+      const payload = { nombre, stock: stockRaw===''?null:parseInt(stockRaw,10) };
+      if(foto_url) payload.foto_url = foto_url;
+      const { error } = await sb.from('mant_bastidores').update(payload).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
+      c.bastidorEditId=null; c.bastidores=null; await ensureCatalogoLoaded(); drawCatalogo();
+      toast('Bastidor actualizado','success');
+    };
+  });
+  document.querySelectorAll('[data-manage-bastidor]').forEach(b=>{
+    b.onclick = ()=>{ c.bastidorSel = (c.bastidorSel===b.dataset.manageBastidor)?null:b.dataset.manageBastidor; c.bastidorEditId=null; drawCatalogo(); };
+  });
+  document.querySelectorAll('[data-add-documento]').forEach(b=>{
+    b.onclick = async ()=>{
+      const bastidorId = b.dataset.addDocumento;
+      const nombreInput = document.getElementById('bd-nombre-'+bastidorId);
+      const pdfInput = document.getElementById('bd-pdf-'+bastidorId);
+      if(!pdfInput.files || !pdfInput.files[0]){ toast('Selecciona un PDF','error'); return; }
+      const nombre = nombreInput.value.trim();
+      b.disabled = true; b.textContent='Subiendo…';
+      const file = pdfInput.files[0];
+      const path = 'bastidores/'+bastidorId+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.pdf';
+      const { error:upErr } = await sb.storage.from('mant-pdfs').upload(path, file);
+      if(upErr){ toast('Error subiendo PDF: '+upErr.message,'error'); b.disabled=false; b.textContent='+ Añadir PDF'; return; }
+      const { data:pub } = sb.storage.from('mant-pdfs').getPublicUrl(path);
+      const { data, error } = await sb.from('mant_bastidor_documentos').insert({ bastidor_id: bastidorId, nombre: nombre||null, pdf_url: pub.publicUrl }).select().single();
+      if(error){ toast('Error: '+error.message,'error'); b.disabled=false; b.textContent='+ Añadir PDF'; return; }
+      c.bastidorDocumentos.push(data);
+      drawCatalogo();
+      toast('Documento añadido','success');
+    };
+  });
+  document.querySelectorAll('[data-delete-documento]').forEach(b=>{
+    b.onclick = async ()=>{
+      if(!confirm('¿Eliminar este documento?')) return;
+      const id = b.dataset.deleteDocumento;
+      const { error } = await sb.from('mant_bastidor_documentos').delete().eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      c.bastidorDocumentos = c.bastidorDocumentos.filter(d=>d.id!==id);
+      drawCatalogo();
+      toast('Documento eliminado','success');
+    };
+  });
+  document.querySelectorAll('[data-toggle-bastidor-pieza]').forEach(b=>{
+    b.onclick = async ()=>{
+      const [bastidorId, piezaId] = b.dataset.toggleBastidorPieza.split('|');
+      const existing = (c.bastidorPiezas||[]).find(bp=>bp.bastidor_id===bastidorId && bp.pieza_id===piezaId);
+      if(existing){
+        await sb.from('mant_bastidor_piezas').delete().eq('bastidor_id',bastidorId).eq('pieza_id',piezaId);
+        c.bastidorPiezas = c.bastidorPiezas.filter(bp=>!(bp.bastidor_id===bastidorId && bp.pieza_id===piezaId));
+      } else {
+        const { data, error } = await sb.from('mant_bastidor_piezas').insert({ bastidor_id: bastidorId, pieza_id: piezaId }).select().single();
+        if(error){ toast('Error: '+error.message,'error'); return; }
+        c.bastidorPiezas.push({ id:data.id, bastidor_id:bastidorId, pieza_id:piezaId });
+      }
+      state.wizard=null;
+      drawCatalogo();
+    };
+  });
+  document.querySelectorAll('[data-reponer-bastidor]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.reponerBastidor;
+      const input = document.getElementById('bst-'+id);
+      const cantidad = parseInt(input.value,10);
+      if(!cantidad || cantidad<1){ toast('Introduce una cantidad válida','error'); return; }
+      const item = c.bastidores.find(x=>x.id===id);
+      const nuevoStock = (item.stock||0) + cantidad;
+      const { error } = await sb.from('mant_bastidores').update({ stock: nuevoStock }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      item.stock = nuevoStock;
+      drawCatalogo();
+      toast('Stock repuesto','success');
+    };
+  });
+  document.querySelectorAll('[data-toggle-bastidor]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.toggleBastidor; const bst=c.bastidores.find(x=>x.id===id);
+      const { error } = await sb.from('mant_bastidores').update({ activo: !bst.activo }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      bst.activo=!bst.activo; state.wizard=null; drawCatalogo();
+    };
+  });
+  document.querySelectorAll('[data-delete-bastidor]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.deleteBastidor; const bst=c.bastidores.find(x=>x.id===id);
+      if(!confirm('¿Eliminar el bastidor "'+bst.nombre+'"? Esta acción no se puede deshacer.')) return;
+      const { error } = await sb.from('mant_bastidores').delete().eq('id', id);
+      if(error){
+        if(error.code==='23503'){ toast('No se puede eliminar: este bastidor tiene registros de mantenimiento guardados. Desactívalo en su lugar.','error'); }
+        else { toast('Error: '+error.message,'error'); }
+        return;
+      }
+      c.bastidores = c.bastidores.filter(x=>x.id!==id);
+      c.bastidorDocumentos = (c.bastidorDocumentos||[]).filter(d=>d.bastidor_id!==id);
+      c.bastidorPiezas = (c.bastidorPiezas||[]).filter(bp=>bp.bastidor_id!==id);
+      if(c.bastidorSel===id) c.bastidorSel=null;
+      state.wizard=null; state.historial=null;
+      drawCatalogo();
+      toast('Bastidor eliminado','success');
+    };
+  });
+  document.querySelectorAll('[data-doc-fabricacion]').forEach(b=>{
+    b.onclick = ()=>{
+      const id = b.dataset.docFabricacion;
+      const fab = (c.producciones||[]).find(x=>x.id===id);
+      if(!fab) return;
+      const win = window.open('', '_blank');
+      if(win) win.document.write('<p style="font-family:sans-serif;padding:24px;">Generando documento…</p>');
+      const items = (fab.mant_piezas3d_fabricacion_items||[]).map(it=>({ referencia: it.referencia_snapshot, cantidad: it.cantidad }));
+      if(win && !win.closed){ escribirDocumentoFabricacion(win, fab, items); }
+      else { toast('El navegador bloqueó la ventana del documento.','error'); }
+    };
+  });
+
+  // Piezas 3D
+  const btnAddPieza = document.getElementById('btn-add-pieza');
+  if(btnAddPieza) btnAddPieza.onclick = async ()=>{
+    const referencia = document.getElementById('np-referencia').value.trim();
+    const descripcion = document.getElementById('np-descripcion').value.trim();
+    const stockRaw = document.getElementById('np-stock').value;
+    const fotoInput = document.getElementById('np-foto');
+    if(!referencia){ toast('Introduce una referencia','error'); return; }
+    btnAddPieza.disabled = true; btnAddPieza.textContent='Guardando…';
+    let foto_url = null;
+    if(fotoInput.files && fotoInput.files[0]){
+      const file = fotoInput.files[0];
+      const ext = (file.name.split('.').pop()||'jpg');
+      const path = 'piezas3d/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
+      const { error:upErr } = await sb.storage.from('mant-fotos').upload(path, file);
+      if(upErr){ toast('Error subiendo foto: '+upErr.message,'error'); btnAddPieza.disabled=false; btnAddPieza.textContent='+ Añadir pieza'; return; }
+      const { data:pub } = sb.storage.from('mant-fotos').getPublicUrl(path);
+      foto_url = pub.publicUrl;
+    }
+    const { error } = await sb.from('mant_piezas3d').insert({
+      referencia, descripcion: descripcion||null, stock: stockRaw===''?null:parseInt(stockRaw,10), foto_url,
+    });
+    if(error){ toast('Error: '+error.message,'error'); btnAddPieza.disabled=false; btnAddPieza.textContent='+ Añadir pieza'; return; }
+    c.piezas3d=null; await ensureCatalogoLoaded(); drawCatalogo();
+    toast('Pieza añadida','success');
+  };
+  document.querySelectorAll('[data-edit-pieza]').forEach(b=>{
+    b.onclick = ()=>{ c.piezaEditId = (c.piezaEditId===b.dataset.editPieza)?null:b.dataset.editPieza; drawCatalogo(); };
+  });
+  document.querySelectorAll('[data-cancel-edit-pieza]').forEach(b=>{ b.onclick=()=>{ c.piezaEditId=null; drawCatalogo(); }; });
+  document.querySelectorAll('[data-save-pieza]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.savePieza;
+      const referencia = document.getElementById('ep-referencia').value.trim();
+      const descripcion = document.getElementById('ep-descripcion').value.trim();
+      const stockRaw = document.getElementById('ep-stock').value;
+      const fotoInput = document.getElementById('ep-foto');
+      if(!referencia){ toast('Introduce una referencia','error'); return; }
+      b.disabled = true; b.textContent='Guardando…';
+      let foto_url;
+      if(fotoInput.files && fotoInput.files[0]){
+        const file = fotoInput.files[0];
+        const ext = (file.name.split('.').pop()||'jpg');
+        const path = 'piezas3d/'+id+'-'+Date.now()+'.'+ext;
+        const { error:upErr } = await sb.storage.from('mant-fotos').upload(path, file, { upsert:true });
+        if(upErr){ toast('Error subiendo foto: '+upErr.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
+        const { data:pub } = sb.storage.from('mant-fotos').getPublicUrl(path);
+        foto_url = pub.publicUrl;
+      }
+      const payload = { referencia, descripcion: descripcion||null, stock: stockRaw===''?null:parseInt(stockRaw,10) };
+      if(foto_url) payload.foto_url = foto_url;
+      const { error } = await sb.from('mant_piezas3d').update(payload).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); b.disabled=false; b.textContent='Guardar'; return; }
+      c.piezaEditId=null; c.piezas3d=null; await ensureCatalogoLoaded(); drawCatalogo();
+      toast('Pieza actualizada','success');
+    };
+  });
+  document.querySelectorAll('[data-toggle-pieza]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.togglePieza; const p=c.piezas3d.find(x=>x.id===id);
+      const { error } = await sb.from('mant_piezas3d').update({ activo: !p.activo }).eq('id', id);
+      if(error){ toast('Error: '+error.message,'error'); return; }
+      p.activo=!p.activo; state.wizard=null; drawCatalogo();
+    };
+  });
+  document.querySelectorAll('[data-delete-pieza]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id=b.dataset.deletePieza; const p=c.piezas3d.find(x=>x.id===id);
+      if(!confirm('¿Eliminar la pieza "'+p.referencia+'"? Esta acción no se puede deshacer.')) return;
+      const { error } = await sb.from('mant_piezas3d').delete().eq('id', id);
+      if(error){
+        if(error.code==='23503'){ toast('No se puede eliminar: esta pieza tiene registros guardados. Desactívala en su lugar.','error'); }
+        else { toast('Error: '+error.message,'error'); }
+        return;
+      }
+      c.piezas3d = c.piezas3d.filter(x=>x.id!==id);
+      c.bastidorPiezas = (c.bastidorPiezas||[]).filter(bp=>bp.pieza_id!==id);
+      state.wizard=null;
+      drawCatalogo();
+      toast('Pieza eliminada','success');
+    };
+  });
+  document.querySelectorAll('[data-reponer-pieza]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.reponerPieza;
+      const input = document.getElementById('pz-'+id);
+      const cantidad = parseInt(input.value,10);
+      if(!cantidad || cantidad<1){ toast('Introduce una cantidad válida','error'); return; }
+      const item = c.piezas3d.find(x=>x.id===id);
+      const nuevoStock = (item.stock||0) + cantidad;
+      const { error } = await sb.from('mant_piezas3d').update({ stock: nuevoStock }).eq('id', id);
       if(error){ toast('Error: '+error.message,'error'); return; }
       item.stock = nuevoStock;
       drawCatalogo();
