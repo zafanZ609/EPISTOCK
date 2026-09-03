@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Almacén</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --steel-900:#111827; --steel-800:#1f2937; --steel-700:#374151; --steel-600:#4b5563;
+    --steel-400:#9ca3af; --steel-200:#e5e7eb; --steel-100:#f3f4f6; --steel-50:#f9fafb;
+    --amber:#f59e0b; --amber-dark:#b45309; --amber-50:#fffbeb;
+    --green:#16a34a; --red:#dc2626; --red-50:#fef2f2; --blue:#2563eb;
+    --radius:12px;
+    --shadow:0 1px 2px rgba(17,24,39,.06), 0 1px 3px rgba(17,24,39,.08);
+    --shadow-lg:0 10px 25px -5px rgba(17,24,39,.15), 0 8px 10px -6px rgba(17,24,39,.08);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background:var(--steel-100); color:var(--steel-900); -webkit-font-smoothing:antialiased;
+  }
+  #app{min-height:100vh;display:flex;flex-direction:column;}
+  a{color:inherit;} button{font-family:inherit;cursor:pointer;} input,select,textarea{font-family:inherit;}
+
+  /* ---------- Login (idéntico a Mantenimiento) ---------- */
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(160deg,var(--steel-900) 0%,var(--steel-800) 45%,var(--steel-700) 100%);padding:24px;}
+  .login-card{width:100%;max-width:400px;background:#fff;border-radius:16px;box-shadow:var(--shadow-lg);padding:32px 28px;}
+  .login-brand{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:22px;text-align:center;}
+  .login-brand img{width:56px;height:56px;object-fit:contain;border-radius:10px;}
+  .login-brand .empresa{font-size:12.5px;color:var(--steel-600);font-weight:600;letter-spacing:.02em;}
+  .login-brand h1{font-size:22px;font-weight:800;margin:0;color:var(--steel-900);}
+  .login-brand .sub{font-size:13px;color:var(--amber-dark);font-weight:600;background:var(--amber-50);padding:2px 10px;border-radius:999px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--steel-700);margin-bottom:6px;}
+  .field input{width:100%;padding:11px 12px;border:1.5px solid var(--steel-200);border-radius:9px;font-size:15px;color:var(--steel-900);outline:none;transition:border-color .15s;}
+  .field input:focus{border-color:var(--amber);}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:9px;padding:11px 18px;font-size:14.5px;font-weight:700;transition:filter .15s, transform .05s;width:100%;}
+  .btn:active{transform:scale(.98);}
+  .btn-primary{background:var(--steel-900);color:#fff;} .btn-primary:hover{filter:brightness(1.15);}
+  .btn-amber{background:var(--amber);color:#1a1200;} .btn-amber:hover{filter:brightness(1.06);}
+  .btn-ghost{background:transparent;color:var(--steel-600);} .btn-ghost:hover{background:var(--steel-100);}
+  .btn-outline{background:#fff;color:var(--steel-800);border:1.5px solid var(--steel-200);} .btn-outline:hover{border-color:var(--steel-400);}
+  .btn-danger{background:var(--red-50);color:var(--red);} .btn-danger:hover{filter:brightness(0.98);}
+  .btn-sm{width:auto;padding:7px 12px;font-size:13px;border-radius:7px;}
+  .btn[disabled]{opacity:.5;pointer-events:none;}
+  .login-alt{text-align:center;margin-top:16px;}
+  .login-alt button{background:none;border:none;color:var(--steel-600);font-size:12.5px;text-decoration:underline;}
+  .error-box{background:var(--red-50);color:var(--red);border:1px solid #fecaca;border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:14px;}
+  .info-box{background:var(--amber-50);color:var(--amber-dark);border:1px solid #fde68a;border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:14px;}
+  .hint{font-size:12px;color:var(--steel-400);margin-top:4px;}
+
+  /* ---------- Shell ---------- */
+  header.topbar{background:var(--steel-900);color:#fff;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:20;box-shadow:var(--shadow);}
+  .topbar-left{display:flex;align-items:center;gap:10px;min-width:0;}
+  .topbar-left img{width:32px;height:32px;border-radius:7px;object-fit:contain;background:#fff;}
+  .topbar-titles{line-height:1.2;min-width:0;}
+  .topbar-titles .app-name{font-weight:800;font-size:15px;}
+  .topbar-titles .empresa-name{font-size:11px;color:var(--steel-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;}
+  .topbar-right{display:flex;align-items:center;gap:10px;}
+  .user-chip{font-size:12.5px;background:var(--steel-800);padding:6px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;}
+  .user-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--amber);}
+  .logout-btn{background:transparent;border:1px solid var(--steel-700);color:var(--steel-200);border-radius:8px;padding:7px 10px;font-size:12.5px;font-weight:600;}
+  .logout-btn:hover{background:var(--steel-800);}
+
+  nav.tabs{background:#fff;border-bottom:1px solid var(--steel-200);display:flex;gap:2px;padding:0 12px;overflow-x:auto;position:sticky;top:56px;z-index:15;}
+  nav.tabs button{background:none;border:none;padding:13px 14px;font-size:13.5px;font-weight:600;color:var(--steel-600);border-bottom:3px solid transparent;white-space:nowrap;}
+  nav.tabs button.active{color:var(--steel-900);border-bottom-color:var(--amber);}
+  nav.tabs button:hover{color:var(--steel-900);}
+
+  main.content{flex:1;padding:20px 16px 60px;max-width:960px;margin:0 auto;width:100%;}
+  .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:16px;}
+  .card h2{font-size:15.5px;margin:0 0 14px;font-weight:700;color:var(--steel-900);}
+  .section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--steel-400);margin:0 0 8px;}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--steel-900);color:#fff;padding:12px 20px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow-lg);z-index:100;display:flex;align-items:center;gap:8px;}
+  .toast.error{background:var(--red);} .toast.success{background:var(--green);}
+
+  .empty-state{text-align:center;padding:40px 20px;color:var(--steel-400);font-size:13.5px;}
+  .spinner{width:26px;height:26px;border:3px solid var(--steel-200);border-top-color:var(--amber);border-radius:50%;animation:spin .7s linear infinite;margin:40px auto;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .center-loading{display:flex;align-items:center;justify-content:center;min-height:100vh;}
+
+  /* ---------- Módulo Almacén ---------- */
+  .foto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:10px;margin:14px 0;}
+  .foto-thumb{position:relative;border-radius:9px;overflow:hidden;border:1.5px solid var(--steel-200);aspect-ratio:3/4;background:var(--steel-50);}
+  .foto-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .foto-thumb .del{position:absolute;top:4px;right:4px;background:rgba(17,24,39,.75);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;line-height:1;}
+  .foto-thumb .estado{position:absolute;bottom:0;left:0;right:0;font-size:10px;font-weight:700;text-align:center;padding:3px 2px;color:#fff;background:rgba(17,24,39,.65);}
+  .foto-thumb .estado.ok{background:rgba(22,163,74,.85);}
+  .foto-thumb .estado.err{background:rgba(220,38,38,.85);}
+  .foto-thumb .estado.dup{background:rgba(245,158,11,.9);color:#1a1200;}
+  .add-foto-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:1.5px dashed var(--steel-400);border-radius:9px;aspect-ratio:3/4;color:var(--steel-600);font-size:11px;font-weight:700;background:var(--steel-50);}
+  .add-foto-tile:hover{border-color:var(--amber);color:var(--amber-dark);}
+  .add-foto-tile .plus{font-size:26px;line-height:1;}
+
+  .progress-bar{height:8px;border-radius:999px;background:var(--steel-200);overflow:hidden;margin:10px 0;}
+  .progress-bar > div{height:100%;background:var(--amber);transition:width .2s;}
+
+  table.admin-table{width:100%;border-collapse:collapse;font-size:13px;}
+  table.admin-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--steel-400);padding:8px 8px;border-bottom:1.5px solid var(--steel-200);white-space:nowrap;}
+  table.admin-table td{padding:8px 8px;border-bottom:1px solid var(--steel-100);vertical-align:top;}
+  .table-scroll{overflow-x:auto;}
+  tr.row-dup td{background:var(--amber-50);}
+  .badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em;display:inline-block;}
+  .badge.dup{background:var(--amber-50);color:var(--amber-dark);}
+  .badge.err{background:var(--red-50);color:var(--red);}
+  .badge.ok{background:#f0fdf4;color:var(--green);}
+  .filters-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+  .filters-row select,.filters-row input{padding:8px 10px;border:1.5px solid var(--steel-200);border-radius:8px;font-size:13px;}
+  .thumb-cell img{width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--steel-200);}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
+
+  @media (max-width:520px){ .login-card{padding:26px 20px;} .topbar-titles .empresa-name{max-width:140px;} }
+</style>
+</head>
+<body>
+<div id="app"><div class="center-loading"><div class="spinner"></div></div></div>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const SUPABASE_URL = "https://tqquotgibizuqtcufknu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxcXVvdGdpYml6dXF0Y3Vma251Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3ODY2MzEsImV4cCI6MjEwMzM2MjYzMX0.pz7hiQu301-h2jeHkp0KXKqA9D7NW490QP1xVDgk3H0";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const EDGE_FN_URL = `${SUPABASE_URL}/functions/v1/alm-extraer-etiqueta`;
+
+const COLUMNS = [
+  ['tipo_documento','Tipo documento'], ['producto','Producto / Denominación'], ['referencia','Referencia'],
+  ['variante','Variante'], ['cantidad','Cantidad'], ['ua','UA'], ['turno','Turno'],
+  ['normativa_epi','Normativa EPI'], ['composicion','Composición'], ['advertencias','Advertencias'],
+  ['fecha_etiqueta','Fecha'], ['lote','Nº Lote'], ['fabricante','Fabricante'], ['cliente','Cliente'], ['notas','Notas'],
+];
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  ready:false, session:null, perfil:null, trabajador:null, empresa:null,
+  loginMode:'trabajador', loginStep:'numero', loginNumero:'', loginNombrePreview:'', loginError:'', loginLoading:false,
+  tab:'nueva',
+  cola:[],            // {id, file, previewUrl, estado:'pendiente'|'subiendo'|'ok'|'error', errorMsg}
+  procesando:false, procesoIdx:0, procesoTotal:0,
+  misRegistros:null,
+  catalogo:null, catalogoFiltros:{ texto:'', soloDup:false, desde:'', hasta:'' },
+};
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+function esc(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtFechaHora(iso){ try{ const d=new Date(iso); return d.toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso; } }
+function toast(msg,type){ const el=document.createElement('div'); el.className='toast'+(type?' '+type:''); el.textContent=msg; document.body.appendChild(el); setTimeout(()=>el.remove(),3200); }
+function uid(){ return Math.random().toString(36).slice(2,10); }
+
+// Redimensiona/comprime una foto antes de subirla (controla coste y velocidad)
+function comprimirImagen(file, maxDim=1400, calidad=0.82){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      let {width,height} = img;
+      if(width>height && width>maxDim){ height=Math.round(height*maxDim/width); width=maxDim; }
+      else if(height>=width && height>maxDim){ width=Math.round(width*maxDim/height); height=maxDim; }
+      const canvas=document.createElement('canvas'); canvas.width=width; canvas.height=height;
+      canvas.getContext('2d').drawImage(img,0,0,width,height);
+      canvas.toBlob(blob=>{
+        URL.revokeObjectURL(url);
+        if(!blob){ reject(new Error('No se pudo procesar la imagen')); return; }
+        resolve(blob);
+      }, 'image/jpeg', calidad);
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+    img.src = url;
+  });
+}
+function blobToBase64(blob){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+/* ============================================================
+   AUTH / BOOTSTRAP  (idéntico a Mantenimiento — mismos trabajadores/accesos)
+   ============================================================ */
+async function loadEmpresa(){
+  try{ const {data} = await sb.from('empresa_config').select('*').eq('id',1).maybeSingle(); state.empresa = data || null; }
+  catch(e){ state.empresa = null; }
+}
+async function loadPerfilYTrabajador(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if(!user){ state.perfil=null; state.trabajador=null; return; }
+  const { data:perfil } = await sb.from('perfiles').select('rol, trabajador_id').eq('id', user.id).maybeSingle();
+  state.perfil = perfil || null;
+  if(perfil && perfil.trabajador_id){
+    const { data:trab } = await sb.from('trabajadores').select('id, numero_empleado, nombre').eq('id', perfil.trabajador_id).maybeSingle();
+    state.trabajador = trab || null;
+  } else { state.trabajador = null; }
+}
+async function bootstrap(){
+  await loadEmpresa();
+  const { data:{ session } } = await sb.auth.getSession();
+  state.session = session;
+  if(session){ await loadPerfilYTrabajador(); }
+  state.ready = true; render();
+}
+sb.auth.onAuthStateChange(async (event, session) => {
+  state.session = session;
+  if(session){ await loadPerfilYTrabajador(); }
+  else { state.perfil=null; state.trabajador=null; state.loginStep='numero'; state.loginMode='trabajador'; state.loginNumero=''; state.loginError=''; }
+  render();
+});
+async function logout(){ await sb.auth.signOut(); state.tab='nueva'; }
+
+async function onContinuarNumero(){
+  const numero = (document.getElementById('in-numero').value||'').trim();
+  if(!numero){ state.loginError='Introduce tu número de empleado.'; render(); return; }
+  state.loginNumero = numero; state.loginLoading=true; state.loginError=''; render();
+  try{
+    const { data, error } = await sb.rpc('trabajador_estado', { p_numero_empleado: numero });
+    state.loginLoading=false;
+    if(error){ state.loginError='No se pudo comprobar el número de empleado.'; render(); return; }
+    if(!data || !data.existe){ state.loginError='Número de empleado no encontrado o inactivo.'; render(); return; }
+    state.loginNombrePreview = data.nombre || '';
+    state.loginStep = data.tiene_password ? 'password' : 'crear';
+    render();
+  }catch(e){ state.loginLoading=false; state.loginError='Error de conexión. Inténtalo de nuevo.'; render(); }
+}
+async function onCrearPassword(){
+  const p1=document.getElementById('in-pass1').value, p2=document.getElementById('in-pass2').value;
+  if(!p1||p1.length<6){ state.loginError='La contraseña debe tener al menos 6 caracteres.'; render(); return; }
+  if(p1!==p2){ state.loginError='Las contraseñas no coinciden.'; render(); return; }
+  state.loginLoading=true; state.loginError=''; render();
+  const email = `empleado-${state.loginNumero}@epistock.local`;
+  try{
+    const { data:signUpData, error:signUpErr } = await sb.auth.signUp({ email, password:p1 });
+    if(signUpErr){ state.loginLoading=false; state.loginError = signUpErr.message.includes('already') ? 'Ya existe una cuenta para este número de empleado.' : signUpErr.message; render(); return; }
+    const { error:vincErr } = await sb.rpc('vincular_trabajador', { p_numero_empleado: state.loginNumero });
+    if(vincErr){ state.loginLoading=false; state.loginError='No se pudo vincular tu cuenta: '+vincErr.message; render(); return; }
+    if(!signUpData.session){
+      const { error:signInErr } = await sb.auth.signInWithPassword({ email, password:p1 });
+      if(signInErr){ state.loginLoading=false; state.loginError=signInErr.message; render(); return; }
+    }
+    state.loginLoading=false;
+  }catch(e){ state.loginLoading=false; state.loginError='Error de conexión. Inténtalo de nuevo.'; render(); }
+}
+async function onEntrarPassword(){
+  const pass=document.getElementById('in-pass').value;
+  if(!pass){ state.loginError='Introduce tu contraseña.'; render(); return; }
+  state.loginLoading=true; state.loginError=''; render();
+  const email = `empleado-${state.loginNumero}@epistock.local`;
+  const { error } = await sb.auth.signInWithPassword({ email, password:pass });
+  state.loginLoading=false;
+  if(error){ state.loginError='Contraseña incorrecta.'; render(); return; }
+}
+async function onAdminEntrar(){
+  const email=(document.getElementById('in-email').value||'').trim(), pass=document.getElementById('in-adminpass').value;
+  if(!email||!pass){ state.loginError='Introduce email y contraseña.'; render(); return; }
+  state.loginLoading=true; state.loginError=''; render();
+  const { error } = await sb.auth.signInWithPassword({ email, password:pass });
+  state.loginLoading=false;
+  if(error){ state.loginError='Credenciales incorrectas.'; render(); return; }
+}
+
+/* ============================================================
+   RENDER ROOT
+   ============================================================ */
+function render(){
+  const app = document.getElementById('app');
+  if(!state.ready){ app.innerHTML='<div class="center-loading"><div class="spinner"></div></div>'; return; }
+  if(!state.session){ app.innerHTML=renderLogin(); bindLoginEvents(); return; }
+  if(!state.perfil){ app.innerHTML='<div class="center-loading"><div class="spinner"></div></div>'; return; }
+  app.innerHTML = renderShell(); bindShellEvents();
+}
+
+/* ============================================================
+   LOGIN VIEW (idéntica a Mantenimiento)
+   ============================================================ */
+function renderLogin(){
+  const empresa = state.empresa;
+  const logo = empresa && empresa.logo_url ? `<img src="${esc(empresa.logo_url)}" alt="logo">` : '';
+  const nombreEmpresa = empresa ? esc(empresa.nombre) : '';
+  let body = '';
+  if(state.loginMode==='trabajador'){
+    if(state.loginStep==='numero'){
+      body = `
+        <div class="field"><label>Número de empleado</label>
+          <input id="in-numero" type="text" inputmode="numeric" placeholder="Ej. 12" value="${esc(state.loginNumero)}" autofocus></div>
+        ${state.loginError?`<div class="error-box">${esc(state.loginError)}</div>`:''}
+        <button class="btn btn-primary" id="btn-continuar" ${state.loginLoading?'disabled':''}>${state.loginLoading?'Comprobando…':'Continuar'}</button>
+        <div class="login-alt"><button id="btn-modo-admin">Acceso administrador</button></div>`;
+    } else if(state.loginStep==='crear'){
+      body = `
+        <div class="info-box">Hola ${esc(state.loginNombrePreview)}, es tu primer acceso. Crea una contraseña.</div>
+        <div class="field"><label>Nueva contraseña</label><input id="in-pass1" type="password" placeholder="Mínimo 6 caracteres" autofocus></div>
+        <div class="field"><label>Repite la contraseña</label><input id="in-pass2" type="password"></div>
+        ${state.loginError?`<div class="error-box">${esc(state.loginError)}</div>`:''}
+        <button class="btn btn-amber" id="btn-crear" ${state.loginLoading?'disabled':''}>${state.loginLoading?'Creando acceso…':'Crear acceso y entrar'}</button>
+        <div class="login-alt"><button id="btn-volver">Volver</button></div>`;
+    } else if(state.loginStep==='password'){
+      body = `
+        <div class="field"><label>Contraseña</label><input id="in-pass" type="password" autofocus></div>
+        ${state.loginError?`<div class="error-box">${esc(state.loginError)}</div>`:''}
+        <button class="btn btn-primary" id="btn-entrar" ${state.loginLoading?'disabled':''}>${state.loginLoading?'Entrando…':'Entrar'}</button>
+        <div class="hint">¿Olvidaste tu contraseña? Pide a un administrador que restablezca tu acceso.</div>
+        <div class="login-alt"><button id="btn-volver">Volver</button></div>`;
+    }
+  } else {
+    body = `
+      <div class="field"><label>Email</label><input id="in-email" type="email" autofocus></div>
+      <div class="field"><label>Contraseña</label><input id="in-adminpass" type="password"></div>
+      ${state.loginError?`<div class="error-box">${esc(state.loginError)}</div>`:''}
+      <button class="btn btn-primary" id="btn-admin-entrar" ${state.loginLoading?'disabled':''}>${state.loginLoading?'Entrando…':'Entrar'}</button>
+      <div class="login-alt"><button id="btn-modo-trabajador">Soy operario, volver</button></div>`;
+  }
+  return `
+    <div class="login-wrap"><div class="login-card">
+      <div class="login-brand">${logo}${nombreEmpresa?`<div class="empresa">${nombreEmpresa}</div>`:''}
+        <h1>Almacén</h1><span class="sub">Catalogación de etiquetas</span></div>
+      ${body}
+    </div></div>`;
+}
+function bindLoginEvents(){
+  const $ = id => document.getElementById(id);
+  if(state.loginMode==='trabajador' && state.loginStep==='numero'){
+    $('btn-modo-admin').onclick=()=>{ state.loginMode='admin'; state.loginError=''; render(); };
+    $('btn-continuar').onclick=onContinuarNumero;
+    $('in-numero').addEventListener('keydown', e=>{ if(e.key==='Enter') onContinuarNumero(); });
+    $('in-numero').oninput=e=> state.loginNumero=e.target.value;
+  } else if(state.loginMode==='trabajador' && state.loginStep==='crear'){
+    $('btn-volver').onclick=()=>{ state.loginStep='numero'; state.loginError=''; render(); };
+    $('btn-crear').onclick=onCrearPassword;
+  } else if(state.loginMode==='trabajador' && state.loginStep==='password'){
+    $('btn-volver').onclick=()=>{ state.loginStep='numero'; state.loginError=''; render(); };
+    $('btn-entrar').onclick=onEntrarPassword;
+    $('in-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') onEntrarPassword(); });
+  } else if(state.loginMode==='admin'){
+    $('btn-modo-trabajador').onclick=()=>{ state.loginMode='trabajador'; state.loginStep='numero'; state.loginError=''; render(); };
+    $('btn-admin-entrar').onclick=onAdminEntrar;
+  }
+}
+
+/* ============================================================
+   SHELL
+   ============================================================ */
+function availableTabs(){
+  const tabs = [];
+  if(state.trabajador){ tabs.push(['nueva','Nueva descarga'], ['mis','Mis registros']); }
+  if(state.perfil.rol==='admin'){ tabs.push(['catalogo','Catálogo']); }
+  return tabs;
+}
+function renderShell(){
+  const empresa = state.empresa;
+  const logo = empresa && empresa.logo_url ? `<img src="${esc(empresa.logo_url)}" alt="logo">` : '';
+  const nombreEmpresa = empresa ? esc(empresa.nombre) : '';
+  const who = state.trabajador ? `${esc(state.trabajador.nombre)} · Nº ${esc(state.trabajador.numero_empleado)}` : (state.perfil.rol==='admin' ? 'Administrador' : '');
+  const tabs = availableTabs();
+  if(!tabs.find(t=>t[0]===state.tab)) state.tab = tabs.length ? tabs[0][0] : 'nueva';
+  return `
+    <header class="topbar">
+      <div class="topbar-left">${logo}
+        <div class="topbar-titles"><div class="app-name">Almacén</div>${nombreEmpresa?`<div class="empresa-name">${nombreEmpresa}</div>`:''}</div>
+      </div>
+      <div class="topbar-right"><div class="user-chip"><span class="dot"></span>${esc(who)}</div>
+        <button class="logout-btn" id="btn-logout">Salir</button></div>
+    </header>
+    <nav class="tabs">${tabs.map(([key,label])=>`<button data-tab="${key}" class="${state.tab===key?'active':''}">${label}</button>`).join('')}</nav>
+    <main class="content" id="tab-content"><div class="spinner"></div></main>`;
+}
+function bindShellEvents(){
+  document.getElementById('btn-logout').onclick = logout;
+  document.querySelectorAll('nav.tabs button').forEach(btn=>{ btn.onclick=()=>{ state.tab=btn.dataset.tab; renderTab(); }; });
+  renderTab();
+}
+function renderTab(){
+  document.querySelectorAll('nav.tabs button').forEach(b=> b.classList.toggle('active', b.dataset.tab===state.tab));
+  const map = { nueva:renderTabNueva, mis:renderTabMis, catalogo:renderTabCatalogo };
+  (map[state.tab] || renderTabNueva)();
+}
+
+/* ============================================================
+   TAB: NUEVA DESCARGA
+   ============================================================ */
+function renderTabNueva(){
+  const c = document.getElementById('tab-content');
+  const tiles = state.cola.map(item => `
+    <div class="foto-thumb">
+      <img src="${item.previewUrl}">
+      <button class="del" data-del="${item.id}" ${state.procesando?'disabled':''}>✕</button>
+      ${item.estado==='ok' ? `<div class="estado ok">${item.duplicado?'Posible dup.':'Extraída'}</div>` : ''}
+      ${item.estado==='error' ? `<div class="estado err">Error</div>` : ''}
+      ${item.estado==='subiendo' ? `<div class="estado">Procesando…</div>` : ''}
+    </div>`).join('');
+  const progresoPct = state.procesoTotal ? Math.round(state.procesoIdx/state.procesoTotal*100) : 0;
+  c.innerHTML = `
+    <div class="card">
+      <h2>Nueva descarga</h2>
+      <p class="hint" style="margin:-6px 0 12px;">Haz una foto por cada etiqueta de caja/palé conforme descargas. Al terminar, pulsa "Finalizar descarga" para extraer los datos automáticamente.</p>
+      <div class="foto-grid">
+        ${tiles}
+        <label class="add-foto-tile">
+          <span class="plus">＋</span><span>Añadir foto</span>
+          <input type="file" accept="image/*" capture="environment" id="input-foto" style="display:none" ${state.procesando?'disabled':''}>
+        </label>
+      </div>
+      ${state.procesando ? `<div class="progress-bar"><div style="width:${progresoPct}%"></div></div><p class="hint">Procesando foto ${state.procesoIdx} de ${state.procesoTotal}…</p>` : ''}
+      <button class="btn btn-amber" id="btn-finalizar" ${(state.cola.filter(f=>f.estado==='pendiente').length===0 || state.procesando) ? 'disabled':''}>
+        ${state.procesando ? 'Procesando…' : `Finalizar descarga (${state.cola.filter(f=>f.estado==='pendiente').length} fotos)`}
+      </button>
+      ${state.cola.some(f=>f.estado==='ok') ? `<div style="margin-top:10px"><button class="btn btn-outline" id="btn-nueva-limpiar">Empezar una descarga nueva</button></div>` : ''}
+    </div>`;
+  document.getElementById('input-foto').onchange = onAddFoto;
+  document.querySelectorAll('[data-del]').forEach(b=> b.onclick = ()=> onDelFoto(b.dataset.del));
+  const btnFin = document.getElementById('btn-finalizar');
+  if(btnFin) btnFin.onclick = onFinalizarDescarga;
+  const btnLimpiar = document.getElementById('btn-nueva-limpiar');
+  if(btnLimpiar) btnLimpiar.onclick = ()=>{ state.cola=[]; renderTabNueva(); };
+}
+function onAddFoto(e){
+  const file = e.target.files[0];
+  e.target.value='';
+  if(!file) return;
+  state.cola.push({ id:uid(), file, previewUrl:URL.createObjectURL(file), estado:'pendiente' });
+  renderTabNueva();
+}
+function onDelFoto(id){
+  state.cola = state.cola.filter(f=>f.id!==id);
+  renderTabNueva();
+}
+async function onFinalizarDescarga(){
+  const pendientes = state.cola.filter(f=>f.estado==='pendiente');
+  if(!pendientes.length) return;
+  state.procesando = true; state.procesoTotal = pendientes.length; state.procesoIdx = 0;
+  renderTabNueva();
+  const sesionId = crypto.randomUUID();
+  const accessToken = state.session.access_token;
+  let okCount=0, errCount=0;
+  for(const item of pendientes){
+    item.estado = 'subiendo'; state.procesoIdx++; renderTabNueva();
+    try{
+      const comprimida = await comprimirImagen(item.file);
+      const nombreArchivo = item.file.name || `foto-${item.id}.jpg`;
+      const path = `${sesionId}/${item.id}-${nombreArchivo.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+      const { error: upErr } = await sb.storage.from('alm-fotos').upload(path, comprimida, { contentType:'image/jpeg' });
+      if(upErr) throw upErr;
+      const { data: pub } = sb.storage.from('alm-fotos').getPublicUrl(path);
+      const base64 = await blobToBase64(comprimida);
+      const res = await fetch(EDGE_FN_URL, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${accessToken}` },
+        body: JSON.stringify({ sesion_id: sesionId, archivo_origen: nombreArchivo, foto_url: pub.publicUrl, image_base64: base64, media_type:'image/jpeg' }),
+      });
+      const data = await res.json();
+      if(!res.ok){ throw new Error(data.error || 'Error al extraer los datos'); }
+      item.estado = 'ok'; okCount++;
+    }catch(err){
+      item.estado = 'error'; item.errorMsg = err.message || String(err); errCount++;
+    }
+    renderTabNueva();
+  }
+  try{ await sb.rpc('alm_marcar_duplicados', { p_sesion_id: sesionId }); }catch(e){ /* no crítico */ }
+  state.procesando = false;
+  toast(`Descarga finalizada: ${okCount} fotos extraídas${errCount?`, ${errCount} con error`:''}`, errCount?'error':'success');
+  state.misRegistros = null; // fuerza recarga
+  renderTabNueva();
+}
+
+/* ============================================================
+   TAB: MIS REGISTROS
+   ============================================================ */
+async function renderTabMis(){
+  const c = document.getElementById('tab-content');
+  if(state.misRegistros===null){
+    c.innerHTML = '<div class="spinner"></div>';
+    const { data, error } = await sb.from('alm_fotos').select('*').eq('trabajador_id', state.trabajador.id).order('ts', { ascending:false }).limit(300);
+    if(error){ toast('Error al cargar tus registros: '+error.message,'error'); state.misRegistros=[]; }
+    else state.misRegistros = data || [];
+  }
+  const rows = state.misRegistros;
+  if(!rows.length){ c.innerHTML = '<div class="card"><div class="empty-state">Todavía no has catalogado ninguna etiqueta.</div></div>'; return; }
+  c.innerHTML = `
+    <div class="card">
+      <h2>Mis registros (${rows.length})</h2>
+      <div class="table-scroll"><table class="admin-table">
+        <thead><tr><th>Foto</th><th>Fecha</th><th>Producto</th><th>Referencia</th><th>Lote</th><th>Cantidad</th><th>Estado</th></tr></thead>
+        <tbody>
+          ${rows.map(r=>`
+            <tr class="${r.posible_duplicado?'row-dup':''}">
+              <td class="thumb-cell">${r.foto_url?`<img src="${esc(r.foto_url)}">`:''}</td>
+              <td>${fmtFechaHora(r.ts)}</td>
+              <td>${esc(r.producto)||'—'}</td>
+              <td>${esc(r.referencia)||'—'}</td>
+              <td>${esc(r.lote)||'—'}</td>
+              <td>${esc(r.cantidad)||'—'}</td>
+              <td>${r.estado==='error' ? '<span class="badge err">Error</span>' : (r.posible_duplicado?'<span class="badge dup">Posible dup.</span>':'<span class="badge ok">OK</span>')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+}
+
+/* ============================================================
+   TAB: CATÁLOGO (admin)
+   ============================================================ */
+async function renderTabCatalogo(){
+  const c = document.getElementById('tab-content');
+  if(state.catalogo===null){
+    c.innerHTML = '<div class="spinner"></div>';
+    const { data, error } = await sb.from('alm_fotos').select('*').order('ts', { ascending:false }).limit(2000);
+    if(error){ toast('Error al cargar el catálogo: '+error.message,'error'); state.catalogo=[]; }
+    else state.catalogo = data || [];
+  }
+  const f = state.catalogoFiltros;
+  let rows = state.catalogo.filter(r=>{
+    if(f.soloDup && !r.posible_duplicado) return false;
+    if(f.desde && r.ts < f.desde) return false;
+    if(f.hasta && r.ts > f.hasta+'T23:59:59') return false;
+    if(f.texto){
+      const t = f.texto.toLowerCase();
+      const hay = [r.producto,r.referencia,r.lote,r.fabricante,r.cliente,r.trabajador_nombre].some(v=> (v||'').toLowerCase().includes(t));
+      if(!hay) return false;
+    }
+    return true;
+  });
+  c.innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <h2 style="margin:0">Catálogo (${rows.length} de ${state.catalogo.length})</h2>
+        <button class="btn btn-outline btn-sm" id="btn-export-csv">Exportar CSV</button>
+      </div>
+      <div class="filters-row">
+        <input type="text" id="f-texto" placeholder="Buscar producto, referencia, lote…" value="${esc(f.texto)}" style="min-width:220px">
+        <input type="date" id="f-desde" value="${esc(f.desde)}">
+        <input type="date" id="f-hasta" value="${esc(f.hasta)}">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--steel-700);">
+          <input type="checkbox" id="f-dup" ${f.soloDup?'checked':''}> Solo posibles duplicados
+        </label>
+      </div>
+      ${rows.length ? `<div class="table-scroll"><table class="admin-table">
+        <thead><tr><th>Foto</th><th>Fecha</th><th>Operario</th>${COLUMNS.map(([,label])=>`<th>${label}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${rows.map(r=>`
+            <tr class="${r.posible_duplicado?'row-dup':''}">
+              <td class="thumb-cell">${r.foto_url?`<img src="${esc(r.foto_url)}">`:''}</td>
+              <td>${fmtFechaHora(r.ts)}</td>
+              <td>${esc(r.trabajador_nombre)||'—'}</td>
+              ${COLUMNS.map(([key])=>`<td>${esc(r[key])||'—'}</td>`).join('')}
+            </tr>`).join('')}
+        </tbody>
+      </table></div>` : `<div class="empty-state">No hay registros con estos filtros.</div>`}
+    </div>`;
+  document.getElementById('f-texto').oninput = e=>{ state.catalogoFiltros.texto=e.target.value; renderTabCatalogo(); };
+  document.getElementById('f-desde').onchange = e=>{ state.catalogoFiltros.desde=e.target.value; renderTabCatalogo(); };
+  document.getElementById('f-hasta').onchange = e=>{ state.catalogoFiltros.hasta=e.target.value; renderTabCatalogo(); };
+  document.getElementById('f-dup').onchange = e=>{ state.catalogoFiltros.soloDup=e.target.checked; renderTabCatalogo(); };
+  document.getElementById('btn-export-csv').onclick = ()=> exportarCSV(rows);
+}
+function exportarCSV(rows){
+  const headers = ['Fecha','Operario', ...COLUMNS.map(c=>c[1])];
+  const lines = [headers.join(';')];
+  rows.forEach(r=>{
+    const vals = [fmtFechaHora(r.ts), r.trabajador_nombre||'', ...COLUMNS.map(([key])=> (r[key]||'').toString().replace(/;/g,','))];
+    lines.push(vals.map(v=> `"${String(v).replace(/"/g,'""')}"`).join(';'));
+  });
+  const blob = new Blob(['\ufeff'+lines.join('\n')], { type:'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `almacen_catalogo_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+/* ============================================================
+   START
+   ============================================================ */
+bootstrap();
+</script>
+</body>
+</html>
