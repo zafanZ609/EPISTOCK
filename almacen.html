@@ -121,6 +121,17 @@
   .doc-transporte-box img{width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--steel-200);}
   .doc-transporte-box a.ver{font-size:12.5px;font-weight:700;color:var(--blue);}
 
+  /* ---------- Áreas de Almacén ---------- */
+  .area-switch{display:flex;gap:8px;padding:10px 12px 0;background:#fff;border-bottom:1px solid var(--steel-200);}
+  .area-switch button{flex:1;padding:10px;margin-bottom:10px;border-radius:9px;border:1.5px solid var(--steel-200);background:#fff;font-weight:700;font-size:13px;color:var(--steel-700);}
+  .area-switch button.active{background:var(--steel-900);color:#fff;border-color:var(--steel-900);}
+  .stock-ref-card{border:1px solid var(--steel-200);border-radius:10px;padding:12px;margin-bottom:9px;}
+  .stock-ref-card .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
+  .cap-row{display:flex;align-items:center;gap:8px;margin:6px 0;}
+  .cap-row label{flex:1;font-size:13px;color:var(--steel-700);}
+  .cap-row input{width:90px;padding:7px 8px;border:1.5px solid var(--steel-200);border-radius:7px;font-size:13px;}
+  .chip-cap{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;background:var(--steel-100);color:var(--steel-700);padding:2px 8px;border-radius:999px;margin:2px 4px 2px 0;}
+
   @media (max-width:520px){ .login-card{padding:26px 20px;} .topbar-titles .empresa-name{max-width:140px;} }
 </style>
 </head>
@@ -150,12 +161,21 @@ const state = {
   ready:false, session:null, perfil:null, trabajador:null, empresa:null,
   loginMode:'trabajador', loginStep:'numero', loginNumero:'', loginNombrePreview:'', loginError:'', loginLoading:false,
   tab:'nueva',
+  area:'recepcion', // 'recepcion' | 'stock'
   nuevaDescarga:{ nombre:'', notas:'', docFile:null, docPreviewUrl:null, descargaId:null, _creando:null },
   cola:[],
   activeWorkers:0, finalizando:false,
   misDescargas:null,
   catalogoDescargas:null, catalogoFiltros:{ texto:'', desde:'', hasta:'' },
   detalle:null,
+  // --- Stock de almacén ---
+  stockCatalogo:null,
+  stockNuevaRefForm:null,
+  stockDraft:{ items:[] },
+  stockVistaRecuento:'draft',
+  misRecuentos:null,
+  adminRecuentos:null,
+  detalleRecuento:null,
 };
 
 /* ============================================================
@@ -367,8 +387,13 @@ function bindLoginEvents(){
    ============================================================ */
 function availableTabs(){
   const tabs = [];
-  if(state.trabajador){ tabs.push(['nueva','Nueva descarga'], ['mis','Mis registros']); }
-  if(state.perfil.rol==='admin'){ tabs.push(['catalogo','Catálogo']); }
+  if(state.area === 'recepcion'){
+    if(state.trabajador){ tabs.push(['nueva','Nueva descarga'], ['mis','Mis registros']); }
+    if(state.perfil.rol==='admin'){ tabs.push(['catalogo','Catálogo']); }
+  } else {
+    if(state.trabajador){ tabs.push(['stock_nuevo','Nuevo recuento'], ['stock_mis','Mis recuentos']); }
+    if(state.perfil.rol==='admin'){ tabs.push(['stock_referencias','Referencias'], ['stock_recuentos','Recuentos']); }
+  }
   return tabs;
 }
 function renderShell(){
@@ -377,7 +402,7 @@ function renderShell(){
   const nombreEmpresa = empresa ? esc(empresa.nombre) : '';
   const who = state.trabajador ? `${esc(state.trabajador.nombre)} · Nº ${esc(state.trabajador.numero_empleado)}` : (state.perfil.rol==='admin' ? 'Administrador' : '');
   const tabs = availableTabs();
-  if(!tabs.find(t=>t[0]===state.tab)) state.tab = tabs.length ? tabs[0][0] : 'nueva';
+  if(!tabs.find(t=>t[0]===state.tab)) state.tab = tabs.length ? tabs[0][0] : null;
   return `
     <header class="topbar">
       <div class="topbar-left">${logo}
@@ -386,19 +411,30 @@ function renderShell(){
       <div class="topbar-right"><div class="user-chip"><span class="dot"></span>${esc(who)}</div>
         <button class="logout-btn" id="btn-logout">Salir</button></div>
     </header>
+    <div class="area-switch">
+      <button data-area="recepcion" class="${state.area==='recepcion'?'active':''}">Recepción de materiales</button>
+      <button data-area="stock" class="${state.area==='stock'?'active':''}">Stock de almacén</button>
+    </div>
     <nav class="tabs">${tabs.map(([key,label])=>`<button data-tab="${key}" class="${state.tab===key?'active':''}">${label}</button>`).join('')}</nav>
     <main class="content" id="tab-content"><div class="spinner"></div></main>`;
 }
 function bindShellEvents(){
   document.getElementById('btn-logout').onclick = logout;
+  document.querySelectorAll('.area-switch button').forEach(btn=>{
+    btn.onclick = ()=>{ state.area = btn.dataset.area; state.tab=null; state.detalle=null; state.detalleRecuento=null; render(); };
+  });
   document.querySelectorAll('nav.tabs button').forEach(btn=>{
-    btn.onclick=()=>{ state.tab=btn.dataset.tab; state.detalle=null; renderTab(); };
+    btn.onclick=()=>{ state.tab=btn.dataset.tab; state.detalle=null; state.detalleRecuento=null; renderTab(); };
   });
   renderTab();
 }
 function renderTab(){
   document.querySelectorAll('nav.tabs button').forEach(b=> b.classList.toggle('active', b.dataset.tab===state.tab));
-  const map = { nueva:renderTabNueva, mis:renderTabMis, catalogo:renderTabCatalogo };
+  const map = {
+    nueva:renderTabNueva, mis:renderTabMis, catalogo:renderTabCatalogo,
+    stock_nuevo:renderTabStockNuevo, stock_mis:renderTabStockMis,
+    stock_referencias:renderTabStockReferencias, stock_recuentos:renderTabStockRecuentos,
+  };
   (map[state.tab] || renderTabNueva)();
 }
 
@@ -783,6 +819,340 @@ function exportarCSV(fotos, descarga){
   const nombreArchivo = (descarga.nombre || fmtFecha(descarga.created_at)).replace(/[^a-zA-Z0-9._-]+/g,'_');
   a.download = `almacen_${nombreArchivo}.csv`;
   a.click();
+}
+
+/* ============================================================
+   STOCK DE ALMACÉN — Referencias (admin)
+   ============================================================ */
+async function renderTabStockReferencias(){
+  const c = document.getElementById('tab-content');
+  if(state.stockCatalogo===null){
+    c.innerHTML = '<div class="spinner"></div>';
+    const { data, error } = await sb.from('alm_stock_referencias').select('*, alm_stock_capacidades(*)').order('referencia');
+    if(error){ toast('Error al cargar referencias: '+error.message,'error'); state.stockCatalogo=[]; }
+    else state.stockCatalogo = data || [];
+  }
+  const editando = state.stockNuevaRefForm;
+  c.innerHTML = `
+    <div class="card">
+      <div class="toolbar"><h2 style="margin:0">Referencias de almacén (${state.stockCatalogo.length})</h2>
+        ${!editando ? `<button class="btn btn-amber btn-sm" id="btn-nueva-ref">+ Nueva referencia</button>` : ''}
+      </div>
+      ${editando ? renderFormReferencia(editando) : ''}
+      <div id="lista-refs"></div>
+    </div>`;
+  if(!editando){
+    document.getElementById('btn-nueva-ref').onclick = ()=>{ state.stockNuevaRefForm = { id:null, referencia:'', descripcion:'', capacidades:[''] }; renderTabStockReferencias(); };
+  } else {
+    bindFormReferenciaEvents();
+  }
+  pintarListaReferencias();
+}
+function renderFormReferencia(form){
+  return `
+    <div class="card" style="background:var(--steel-50);box-shadow:none;border:1px solid var(--steel-200)">
+      <div class="field"><label>Referencia</label><input id="rf-referencia" type="text" value="${esc(form.referencia)}"></div>
+      <div class="field"><label>Descripción</label><input id="rf-descripcion" type="text" value="${esc(form.descripcion)}"></div>
+      <div class="field"><label>Capacidades (unidades por caja)</label>
+        <div id="rf-capacidades">
+          ${form.capacidades.map((cap,i)=>`
+            <div class="cap-row">
+              <input type="number" min="1" data-cap-idx="${i}" value="${esc(cap)}" placeholder="Ej. 50">
+              <button class="btn btn-outline btn-sm" data-cap-del="${i}" type="button">✕</button>
+            </div>`).join('')}
+        </div>
+        <button class="btn btn-outline btn-sm" id="btn-add-cap" type="button" style="width:auto;margin-top:4px">+ Añadir capacidad</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-primary btn-sm" id="btn-guardar-ref">Guardar</button>
+        <button class="btn btn-outline btn-sm" id="btn-cancelar-ref">Cancelar</button>
+      </div>
+    </div>`;
+}
+function bindFormReferenciaEvents(){
+  const form = state.stockNuevaRefForm;
+  document.getElementById('rf-referencia').oninput = e=> form.referencia = e.target.value;
+  document.getElementById('rf-descripcion').oninput = e=> form.descripcion = e.target.value;
+  document.querySelectorAll('[data-cap-idx]').forEach(inp=> inp.oninput = e=>{ form.capacidades[+inp.dataset.capIdx] = e.target.value; });
+  document.querySelectorAll('[data-cap-del]').forEach(b=> b.onclick = ()=>{
+    form.capacidades.splice(+b.dataset.capDel,1);
+    if(!form.capacidades.length) form.capacidades.push('');
+    renderTabStockReferencias();
+  });
+  document.getElementById('btn-add-cap').onclick = ()=>{ form.capacidades.push(''); renderTabStockReferencias(); };
+  document.getElementById('btn-guardar-ref').onclick = guardarReferencia;
+  document.getElementById('btn-cancelar-ref').onclick = ()=>{ state.stockNuevaRefForm=null; renderTabStockReferencias(); };
+}
+async function guardarReferencia(){
+  const form = state.stockNuevaRefForm;
+  const referencia = form.referencia.trim();
+  if(!referencia){ toast('La referencia es obligatoria','error'); return; }
+  const capacidades = form.capacidades.map(c=>parseInt(c,10)).filter(n=>Number.isInteger(n) && n>0);
+  try{
+    let refId = form.id;
+    if(refId){
+      const { error } = await sb.from('alm_stock_referencias').update({ referencia, descripcion: form.descripcion||null }).eq('id', refId);
+      if(error) throw error;
+      const { error: delErr } = await sb.from('alm_stock_capacidades').delete().eq('referencia_id', refId);
+      if(delErr) throw delErr;
+    } else {
+      const { data, error } = await sb.from('alm_stock_referencias').insert({ referencia, descripcion: form.descripcion||null }).select().single();
+      if(error) throw error;
+      refId = data.id;
+    }
+    if(capacidades.length){
+      const rows = capacidades.map(capacidad=>({ referencia_id: refId, capacidad }));
+      const { error: capErr } = await sb.from('alm_stock_capacidades').insert(rows);
+      if(capErr) throw capErr;
+    }
+    toast('Referencia guardada','success');
+    state.stockNuevaRefForm = null; state.stockCatalogo = null;
+    renderTabStockReferencias();
+  }catch(e){ toast('Error al guardar: '+(e.message.includes('duplicate')?'ya existe una referencia con ese código.':e.message),'error'); }
+}
+function pintarListaReferencias(){
+  const slot = document.getElementById('lista-refs');
+  if(!slot) return;
+  if(!state.stockCatalogo.length){ slot.innerHTML = '<div class="empty-state">Todavía no hay referencias dadas de alta.</div>'; return; }
+  slot.innerHTML = state.stockCatalogo.map(r=>`
+    <div class="stock-ref-card">
+      <div class="top">
+        <div><strong>${esc(r.referencia)}</strong>${r.descripcion?` — ${esc(r.descripcion)}`:''}</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-outline btn-sm" data-edit-ref="${r.id}">Editar</button>
+          <button class="btn btn-danger btn-sm" data-del-ref="${r.id}">Eliminar</button>
+        </div>
+      </div>
+      <div style="margin-top:6px">${
+        (r.alm_stock_capacidades||[]).slice().sort((a,b)=>a.capacidad-b.capacidad).map(c=>`<span class="chip-cap">Caja de ${c.capacidad}</span>`).join('')
+        || '<span class="hint">Sin capacidades definidas</span>'
+      }</div>
+    </div>`).join('');
+  slot.querySelectorAll('[data-edit-ref]').forEach(b=> b.onclick=()=>{
+    const r = state.stockCatalogo.find(x=>x.id===b.dataset.editRef);
+    const caps = (r.alm_stock_capacidades||[]).slice().sort((a,b)=>a.capacidad-b.capacidad).map(c=>String(c.capacidad));
+    state.stockNuevaRefForm = { id:r.id, referencia:r.referencia, descripcion:r.descripcion||'', capacidades: caps.length?caps:[''] };
+    renderTabStockReferencias();
+  });
+  slot.querySelectorAll('[data-del-ref]').forEach(b=> b.onclick=async ()=>{
+    if(!confirm('¿Eliminar esta referencia? Se perderán sus capacidades asociadas.')) return;
+    const { error } = await sb.from('alm_stock_referencias').delete().eq('id', b.dataset.delRef);
+    if(error){ toast('Error al eliminar: '+error.message,'error'); return; }
+    state.stockCatalogo = null; renderTabStockReferencias();
+  });
+}
+
+/* ============================================================
+   STOCK DE ALMACÉN — Nuevo recuento (operario)
+   ============================================================ */
+async function renderTabStockNuevo(){
+  const c = document.getElementById('tab-content');
+  if(state.stockCatalogo===null){
+    c.innerHTML = '<div class="spinner"></div>';
+    const { data, error } = await sb.from('alm_stock_referencias').select('*, alm_stock_capacidades(*)').eq('activo', true).order('referencia');
+    if(error){ toast('Error al cargar el catálogo: '+error.message,'error'); state.stockCatalogo=[]; }
+    else state.stockCatalogo = data || [];
+  }
+  if(state.stockVistaRecuento==='resumen'){ renderStockResumen(); return; }
+  renderStockDraft();
+}
+function renderStockDraft(){
+  const c = document.getElementById('tab-content');
+  const draft = state.stockDraft;
+  const idsEnDraft = new Set(draft.items.map(i=>i.referencia_id));
+  const disponibles = state.stockCatalogo.filter(r=>!idsEnDraft.has(r.id));
+  c.innerHTML = `
+    <div class="card">
+      <h2>Nuevo recuento</h2>
+      <p class="hint" style="margin-top:-6px">Añade las referencias que vayas contando. No hace falta contar todas.</p>
+      <div class="field"><label>Añadir referencia al recuento</label>
+        <select id="stock-select-ref">
+          <option value="">Selecciona una referencia…</option>
+          ${disponibles.map(r=>`<option value="${r.id}">${esc(r.referencia)}${r.descripcion?' — '+esc(r.descripcion):''}</option>`).join('')}
+        </select>
+      </div>
+      <div id="stock-draft-items"></div>
+      <button class="btn btn-amber" id="btn-ver-resumen" ${draft.items.length? '' : 'disabled'}>Ver resumen (${draft.items.length} referencia${draft.items.length===1?'':'s'})</button>
+    </div>`;
+  document.getElementById('stock-select-ref').onchange = e=>{
+    const id = e.target.value; if(!id) return;
+    const ref = state.stockCatalogo.find(r=>r.id===id);
+    draft.items.push({
+      referencia_id: ref.id, referencia: ref.referencia, descripcion: ref.descripcion,
+      capacidades: (ref.alm_stock_capacidades||[]).slice().sort((a,b)=>a.capacidad-b.capacidad).map(cc=>({capacidad:cc.capacidad, cajas:''})),
+      picos:'',
+    });
+    renderStockDraft();
+  };
+  pintarDraftItems();
+  document.getElementById('btn-ver-resumen').onclick = ()=>{ state.stockVistaRecuento='resumen'; renderTabStockNuevo(); };
+}
+function pintarDraftItems(){
+  const slot = document.getElementById('stock-draft-items');
+  const draft = state.stockDraft;
+  if(!draft.items.length){ slot.innerHTML = '<div class="empty-state">Añade referencias para empezar a contar.</div>'; return; }
+  slot.innerHTML = draft.items.map((item, idx)=>`
+    <div class="stock-ref-card">
+      <div class="top">
+        <strong>${esc(item.referencia)}</strong>
+        <button class="btn btn-outline btn-sm" data-quitar="${idx}">Quitar</button>
+      </div>
+      ${item.descripcion?`<p class="hint" style="margin:2px 0 8px">${esc(item.descripcion)}</p>`:''}
+      ${item.capacidades.length ? item.capacidades.map((cap,ci)=>`
+        <div class="cap-row"><label>Cajas de ${cap.capacidad} uds</label>
+          <input type="number" min="0" inputmode="numeric" data-item="${idx}" data-cap="${ci}" value="${esc(cap.cajas)}"></div>`).join('')
+        : '<p class="hint">Esta referencia no tiene capacidades definidas — usa solo "picos".</p>'}
+      <div class="cap-row"><label>Unidades sueltas (picos)</label>
+        <input type="number" min="0" inputmode="numeric" data-item="${idx}" data-picos value="${esc(item.picos)}"></div>
+    </div>`).join('');
+  slot.querySelectorAll('[data-quitar]').forEach(b=> b.onclick=()=>{ draft.items.splice(+b.dataset.quitar,1); renderStockDraft(); });
+  slot.querySelectorAll('[data-item][data-cap]').forEach(inp=>{
+    inp.oninput = e=>{ draft.items[+inp.dataset.item].capacidades[+inp.dataset.cap].cajas = e.target.value; };
+  });
+  slot.querySelectorAll('[data-item][data-picos]').forEach(inp=>{
+    inp.oninput = e=>{ draft.items[+inp.dataset.item].picos = e.target.value; };
+  });
+}
+function calcularTotalItem(item){
+  const deCajas = item.capacidades.reduce((s,c)=> s + (parseInt(c.cajas,10)||0) * c.capacidad, 0);
+  const picos = parseInt(item.picos,10)||0;
+  return deCajas + picos;
+}
+function renderStockResumen(){
+  const c = document.getElementById('tab-content');
+  const draft = state.stockDraft;
+  c.innerHTML = `
+    <div class="card">
+      <h2>Resumen del recuento</h2>
+      <div class="table-scroll"><table class="admin-table">
+        <thead><tr><th>Referencia</th><th>Desglose</th><th>Total unidades</th></tr></thead>
+        <tbody>
+          ${draft.items.map(item=>`
+            <tr>
+              <td>${esc(item.referencia)}</td>
+              <td>${item.capacidades.map(cc=>`${parseInt(cc.cajas,10)||0}×${cc.capacidad}`).join(' + ')}${parseInt(item.picos,10)?`${item.capacidades.length?' + ':''}${parseInt(item.picos,10)} picos`:''}</td>
+              <td><strong>${calcularTotalItem(item)}</strong></td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button class="btn btn-outline" id="btn-atras-recuento">← Atrás y revisar</button>
+        <button class="btn btn-amber" id="btn-guardar-recuento">Guardar recuento</button>
+      </div>
+    </div>`;
+  document.getElementById('btn-atras-recuento').onclick = ()=>{ state.stockVistaRecuento='draft'; renderTabStockNuevo(); };
+  document.getElementById('btn-guardar-recuento').onclick = guardarRecuento;
+}
+async function guardarRecuento(){
+  const draft = state.stockDraft;
+  if(!draft.items.length) return;
+  try{
+    const { data: recuento, error: rErr } = await sb.from('alm_stock_recuentos').insert({
+      trabajador_id: state.trabajador.id,
+      numero_empleado: state.trabajador.numero_empleado,
+      trabajador_nombre: state.trabajador.nombre,
+    }).select().single();
+    if(rErr) throw rErr;
+    const rows = draft.items.map(item=>({
+      recuento_id: recuento.id,
+      referencia_id: item.referencia_id,
+      referencia: item.referencia,
+      descripcion: item.descripcion || null,
+      detalle: item.capacidades.map(cc=>({ capacidad: cc.capacidad, cajas: parseInt(cc.cajas,10)||0 })),
+      picos: parseInt(item.picos,10)||0,
+      total: calcularTotalItem(item),
+    }));
+    const { error: iErr } = await sb.from('alm_stock_recuento_items').insert(rows);
+    if(iErr) throw iErr;
+    toast('Recuento guardado','success');
+    state.stockDraft = { items:[] }; state.stockVistaRecuento='draft';
+    state.misRecuentos = null;
+    state.tab='stock_mis'; renderTab();
+  }catch(e){ toast('Error al guardar el recuento: '+e.message,'error'); }
+}
+
+/* ============================================================
+   STOCK DE ALMACÉN — Mis recuentos / Recuentos (admin)
+   ============================================================ */
+async function renderTabStockMis(){
+  if(state.detalleRecuento){ renderDetalleRecuento(); return; }
+  const c = document.getElementById('tab-content');
+  if(state.misRecuentos===null){
+    c.innerHTML = '<div class="spinner"></div>';
+    const { data, error } = await sb.from('alm_stock_recuentos')
+      .select('*, alm_stock_recuento_items(count)')
+      .eq('trabajador_id', state.trabajador.id)
+      .order('created_at', { ascending:false }).limit(200);
+    if(error){ toast('Error al cargar tus recuentos: '+error.message,'error'); state.misRecuentos=[]; }
+    else state.misRecuentos = data || [];
+  }
+  pintarListaRecuentos(state.misRecuentos, 'stock_mis', 'Mis recuentos');
+}
+async function renderTabStockRecuentos(){
+  if(state.detalleRecuento){ renderDetalleRecuento(); return; }
+  const c = document.getElementById('tab-content');
+  if(state.adminRecuentos===null){
+    c.innerHTML = '<div class="spinner"></div>';
+    const { data, error } = await sb.from('alm_stock_recuentos')
+      .select('*, alm_stock_recuento_items(count)')
+      .order('created_at', { ascending:false }).limit(500);
+    if(error){ toast('Error al cargar los recuentos: '+error.message,'error'); state.adminRecuentos=[]; }
+    else state.adminRecuentos = data || [];
+  }
+  pintarListaRecuentos(state.adminRecuentos, 'stock_recuentos', 'Recuentos de stock');
+}
+function pintarListaRecuentos(lista, origen, titulo){
+  const c = document.getElementById('tab-content');
+  c.innerHTML = `<div class="card"><h2>${titulo} (${lista.length})</h2><div id="lista-recuentos-slot"></div></div>`;
+  const slot = document.getElementById('lista-recuentos-slot');
+  if(!lista.length){ slot.innerHTML = '<div class="empty-state">Todavía no hay recuentos guardados.</div>'; return; }
+  slot.innerHTML = lista.map(r=>{
+    const n = (r.alm_stock_recuento_items && r.alm_stock_recuento_items[0] && r.alm_stock_recuento_items[0].count) || 0;
+    return `
+      <button class="descarga-item" data-open-recuento="${r.id}">
+        <div><div class="nombre">${fmtFechaHora(r.created_at)}</div>
+        <div class="meta">${esc(r.trabajador_nombre)||'—'} · ${n} referencia${n===1?'':'s'} contadas</div></div>
+        <span class="chevron">›</span>
+      </button>`;
+  }).join('');
+  slot.querySelectorAll('[data-open-recuento]').forEach(b=> b.onclick = ()=> abrirDetalleRecuento(b.dataset.openRecuento, origen));
+}
+async function abrirDetalleRecuento(id, origen){
+  state.detalleRecuento = { id, origen, recuento:null, items:[], cargando:true };
+  state.tab = origen; renderTab();
+  const [{ data: recuento, error: e1 }, { data: items, error: e2 }] = await Promise.all([
+    sb.from('alm_stock_recuentos').select('*').eq('id', id).single(),
+    sb.from('alm_stock_recuento_items').select('*').eq('recuento_id', id).order('referencia'),
+  ]);
+  if(e1 || !recuento){ toast('No se pudo abrir el recuento','error'); state.detalleRecuento=null; renderTab(); return; }
+  state.detalleRecuento.recuento = recuento;
+  state.detalleRecuento.items = items || [];
+  state.detalleRecuento.cargando = false;
+  renderDetalleRecuento();
+}
+function renderDetalleRecuento(){
+  const c = document.getElementById('tab-content');
+  const det = state.detalleRecuento;
+  if(!det || det.cargando){ c.innerHTML = '<div class="spinner"></div>'; return; }
+  const r = det.recuento, items = det.items;
+  c.innerHTML = `
+    <button class="back-link" id="btn-volver-recuento">← Volver</button>
+    <div class="card">
+      <h2>Recuento del ${fmtFechaHora(r.created_at)}</h2>
+      <p class="hint">Operario: ${esc(r.trabajador_nombre)||'—'} (Nº ${esc(r.numero_empleado)||'—'})</p>
+      <div class="table-scroll"><table class="admin-table">
+        <thead><tr><th>Referencia</th><th>Desglose</th><th>Total unidades</th></tr></thead>
+        <tbody>
+          ${items.map(it=>`
+            <tr>
+              <td>${esc(it.referencia)}</td>
+              <td>${(it.detalle||[]).map(d=>`${d.cajas}×${d.capacidad}`).join(' + ')}${it.picos?`${(it.detalle||[]).length?' + ':''}${it.picos} picos`:''}</td>
+              <td><strong>${it.total}</strong></td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+  document.getElementById('btn-volver-recuento').onclick = ()=>{ state.detalleRecuento=null; renderTab(); };
 }
 
 /* ============================================================
