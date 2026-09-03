@@ -20,14 +20,10 @@
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
-  body{
-    font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    background:var(--steel-100); color:var(--steel-900); -webkit-font-smoothing:antialiased;
-  }
+  body{ font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--steel-100); color:var(--steel-900); -webkit-font-smoothing:antialiased; }
   #app{min-height:100vh;display:flex;flex-direction:column;}
   a{color:inherit;} button{font-family:inherit;cursor:pointer;} input,select,textarea{font-family:inherit;}
 
-  /* ---------- Login (idéntico a Mantenimiento) ---------- */
   .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;
     background:linear-gradient(160deg,var(--steel-900) 0%,var(--steel-800) 45%,var(--steel-700) 100%);padding:24px;}
   .login-card{width:100%;max-width:400px;background:#fff;border-radius:16px;box-shadow:var(--shadow-lg);padding:32px 28px;}
@@ -38,8 +34,8 @@
   .login-brand .sub{font-size:13px;color:var(--amber-dark);font-weight:600;background:var(--amber-50);padding:2px 10px;border-radius:999px;}
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:12.5px;font-weight:600;color:var(--steel-700);margin-bottom:6px;}
-  .field input{width:100%;padding:11px 12px;border:1.5px solid var(--steel-200);border-radius:9px;font-size:15px;color:var(--steel-900);outline:none;transition:border-color .15s;}
-  .field input:focus{border-color:var(--amber);}
+  .field input,.field textarea{width:100%;padding:11px 12px;border:1.5px solid var(--steel-200);border-radius:9px;font-size:15px;color:var(--steel-900);outline:none;transition:border-color .15s;}
+  .field input:focus,.field textarea:focus{border-color:var(--amber);}
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:9px;padding:11px 18px;font-size:14.5px;font-weight:700;transition:filter .15s, transform .05s;width:100%;}
   .btn:active{transform:scale(.98);}
   .btn-primary{background:var(--steel-900);color:#fff;} .btn-primary:hover{filter:brightness(1.15);}
@@ -55,7 +51,6 @@
   .info-box{background:var(--amber-50);color:var(--amber-dark);border:1px solid #fde68a;border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:14px;}
   .hint{font-size:12px;color:var(--steel-400);margin-top:4px;}
 
-  /* ---------- Shell ---------- */
   header.topbar{background:var(--steel-900);color:#fff;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:20;box-shadow:var(--shadow);}
   .topbar-left{display:flex;align-items:center;gap:10px;min-width:0;}
   .topbar-left img{width:32px;height:32px;border-radius:7px;object-fit:contain;background:#fff;}
@@ -86,7 +81,6 @@
   @keyframes spin{to{transform:rotate(360deg);}}
   .center-loading{display:flex;align-items:center;justify-content:center;min-height:100vh;}
 
-  /* ---------- Módulo Almacén ---------- */
   .foto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:10px;margin:14px 0;}
   .foto-thumb{position:relative;border-radius:9px;overflow:hidden;border:1.5px solid var(--steel-200);aspect-ratio:3/4;background:var(--steel-50);}
   .foto-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
@@ -94,7 +88,6 @@
   .foto-thumb .estado{position:absolute;bottom:0;left:0;right:0;font-size:10px;font-weight:700;text-align:center;padding:3px 2px;color:#fff;background:rgba(17,24,39,.65);}
   .foto-thumb .estado.ok{background:rgba(22,163,74,.85);}
   .foto-thumb .estado.err{background:rgba(220,38,38,.85);}
-  .foto-thumb .estado.dup{background:rgba(245,158,11,.9);color:#1a1200;}
   .add-foto-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:1.5px dashed var(--steel-400);border-radius:9px;aspect-ratio:3/4;color:var(--steel-600);font-size:11px;font-weight:700;background:var(--steel-50);}
   .add-foto-tile:hover{border-color:var(--amber);color:var(--amber-dark);}
   .add-foto-tile .plus{font-size:26px;line-height:1;}
@@ -113,8 +106,20 @@
   .badge.ok{background:#f0fdf4;color:var(--green);}
   .filters-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
   .filters-row select,.filters-row input{padding:8px 10px;border:1.5px solid var(--steel-200);border-radius:8px;font-size:13px;}
-  .thumb-cell img{width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--steel-200);}
   .toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
+
+  .descarga-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;border:1px solid var(--steel-200);border-radius:10px;margin-bottom:9px;background:#fff;text-align:left;width:100%;}
+  .descarga-item:hover{border-color:var(--steel-400);}
+  .descarga-item .nombre{font-weight:700;font-size:14px;color:var(--steel-900);}
+  .descarga-item .meta{font-size:12px;color:var(--steel-400);margin-top:2px;}
+  .descarga-item .chevron{color:var(--steel-400);font-size:18px;}
+  .doc-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--blue);background:#eff6ff;padding:2px 8px;border-radius:999px;}
+
+  .detalle-header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px;flex-wrap:wrap;}
+  .back-link{background:none;border:none;color:var(--amber-dark);font-weight:700;font-size:12.5px;padding:0;margin-bottom:10px;}
+  .doc-transporte-box{border:1.5px dashed var(--steel-200);border-radius:10px;padding:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .doc-transporte-box img{width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--steel-200);}
+  .doc-transporte-box a.ver{font-size:12.5px;font-weight:700;color:var(--blue);}
 
   @media (max-width:520px){ .login-card{padding:26px 20px;} .topbar-titles .empresa-name{max-width:140px;} }
 </style>
@@ -134,9 +139,9 @@ const EDGE_FN_URL = `${SUPABASE_URL}/functions/v1/alm-extraer-etiqueta`;
 const COLUMNS = [
   ['tipo_documento','Tipo documento'], ['producto','Producto / Denominación'], ['referencia','Referencia'],
   ['variante','Variante'], ['cantidad','Cantidad'], ['ua','UA'], ['turno','Turno'],
-  ['normativa_epi','Normativa EPI'], ['composicion','Composición'], ['advertencias','Advertencias'],
   ['fecha_etiqueta','Fecha'], ['lote','Nº Lote'], ['fabricante','Fabricante'], ['cliente','Cliente'], ['notas','Notas'],
 ];
+const CONCURRENCIA = 4;
 
 /* ============================================================
    STATE
@@ -145,36 +150,33 @@ const state = {
   ready:false, session:null, perfil:null, trabajador:null, empresa:null,
   loginMode:'trabajador', loginStep:'numero', loginNumero:'', loginNombrePreview:'', loginError:'', loginLoading:false,
   tab:'nueva',
-  cola:[],            // {id, file, previewUrl, estado:'pendiente'|'subiendo'|'ok'|'error', errorMsg}
+  nuevaDescarga:{ nombre:'', notas:'', docFile:null, docPreviewUrl:null },
+  cola:[],
   procesando:false, procesoIdx:0, procesoTotal:0,
-  misRegistros:null,
-  catalogo:null, catalogoFiltros:{ texto:'', soloDup:false, desde:'', hasta:'' },
+  misDescargas:null,
+  catalogoDescargas:null, catalogoFiltros:{ texto:'', desde:'', hasta:'' },
+  detalle:null,
 };
 
 /* ============================================================
    UTILS
    ============================================================ */
 function esc(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtFecha(iso){ try{ const d=new Date(iso); return d.toLocaleDateString('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit',year:'numeric'}); }catch(e){ return iso; } }
 function fmtFechaHora(iso){ try{ const d=new Date(iso); return d.toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso; } }
 function toast(msg,type){ const el=document.createElement('div'); el.className='toast'+(type?' '+type:''); el.textContent=msg; document.body.appendChild(el); setTimeout(()=>el.remove(),3200); }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 
-// Redimensiona/comprime una foto antes de subirla (controla coste y velocidad)
 function comprimirImagen(file, maxDim=1400, calidad=0.82){
   return new Promise((resolve,reject)=>{
-    const img = new Image();
-    const url = URL.createObjectURL(file);
+    const img = new Image(); const url = URL.createObjectURL(file);
     img.onload = ()=>{
       let {width,height} = img;
       if(width>height && width>maxDim){ height=Math.round(height*maxDim/width); width=maxDim; }
       else if(height>=width && height>maxDim){ width=Math.round(width*maxDim/height); height=maxDim; }
       const canvas=document.createElement('canvas'); canvas.width=width; canvas.height=height;
       canvas.getContext('2d').drawImage(img,0,0,width,height);
-      canvas.toBlob(blob=>{
-        URL.revokeObjectURL(url);
-        if(!blob){ reject(new Error('No se pudo procesar la imagen')); return; }
-        resolve(blob);
-      }, 'image/jpeg', calidad);
+      canvas.toBlob(blob=>{ URL.revokeObjectURL(url); if(!blob){ reject(new Error('No se pudo procesar la imagen')); return; } resolve(blob); }, 'image/jpeg', calidad);
     };
     img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
     img.src = url;
@@ -188,9 +190,20 @@ function blobToBase64(blob){
     reader.readAsDataURL(blob);
   });
 }
+async function subirDocumentoTransporte(descargaId, file){
+  const comprimida = await comprimirImagen(file, 2000, 0.88);
+  const nombre = (file.name||'documento.jpg').replace(/[^a-zA-Z0-9._-]/g,'_');
+  const path = `documentos/${descargaId}-${Date.now()}-${nombre}`;
+  const { error: upErr } = await sb.storage.from('alm-fotos').upload(path, comprimida, { contentType:'image/jpeg' });
+  if(upErr) throw upErr;
+  const { data: pub } = sb.storage.from('alm-fotos').getPublicUrl(path);
+  const { error: updErr } = await sb.from('alm_descargas').update({ documento_transporte_url: pub.publicUrl }).eq('id', descargaId);
+  if(updErr) throw updErr;
+  return pub.publicUrl;
+}
 
 /* ============================================================
-   AUTH / BOOTSTRAP  (idéntico a Mantenimiento — mismos trabajadores/accesos)
+   AUTH / BOOTSTRAP
    ============================================================ */
 async function loadEmpresa(){
   try{ const {data} = await sb.from('empresa_config').select('*').eq('id',1).maybeSingle(); state.empresa = data || null; }
@@ -283,7 +296,7 @@ function render(){
 }
 
 /* ============================================================
-   LOGIN VIEW (idéntica a Mantenimiento)
+   LOGIN VIEW
    ============================================================ */
 function renderLogin(){
   const empresa = state.empresa;
@@ -378,7 +391,9 @@ function renderShell(){
 }
 function bindShellEvents(){
   document.getElementById('btn-logout').onclick = logout;
-  document.querySelectorAll('nav.tabs button').forEach(btn=>{ btn.onclick=()=>{ state.tab=btn.dataset.tab; renderTab(); }; });
+  document.querySelectorAll('nav.tabs button').forEach(btn=>{
+    btn.onclick=()=>{ state.tab=btn.dataset.tab; state.detalle=null; renderTab(); };
+  });
   renderTab();
 }
 function renderTab(){
@@ -392,19 +407,31 @@ function renderTab(){
    ============================================================ */
 function renderTabNueva(){
   const c = document.getElementById('tab-content');
+  const nd = state.nuevaDescarga;
   const tiles = state.cola.map(item => `
     <div class="foto-thumb">
       <img src="${item.previewUrl}">
       <button class="del" data-del="${item.id}" ${state.procesando?'disabled':''}>✕</button>
-      ${item.estado==='ok' ? `<div class="estado ok">${item.duplicado?'Posible dup.':'Extraída'}</div>` : ''}
+      ${item.estado==='ok' ? `<div class="estado ok">Extraída</div>` : ''}
       ${item.estado==='error' ? `<div class="estado err">Error</div>` : ''}
       ${item.estado==='subiendo' ? `<div class="estado">Procesando…</div>` : ''}
     </div>`).join('');
   const progresoPct = state.procesoTotal ? Math.round(state.procesoIdx/state.procesoTotal*100) : 0;
+  const pendientesCount = state.cola.filter(f=>f.estado==='pendiente').length;
   c.innerHTML = `
     <div class="card">
       <h2>Nueva descarga</h2>
-      <p class="hint" style="margin:-6px 0 12px;">Haz una foto por cada etiqueta de caja/palé conforme descargas. Al terminar, pulsa "Finalizar descarga" para extraer los datos automáticamente.</p>
+      <div class="field"><label>Nombre de la descarga (opcional)</label>
+        <input id="nd-nombre" type="text" placeholder="Ej. Camión Zafan 03/09" value="${esc(nd.nombre)}" ${state.procesando?'disabled':''}></div>
+      <div class="field"><label>Notas (opcional)</label>
+        <textarea id="nd-notas" rows="2" placeholder="Cualquier incidencia o comentario sobre esta descarga…" ${state.procesando?'disabled':''}>${esc(nd.notas)}</textarea></div>
+      <div class="field"><label>Foto del documento de transporte / albarán (opcional, se guarda de forma permanente)</label>
+        <input type="file" accept="image/*" capture="environment" id="nd-doc" ${state.procesando?'disabled':''}>
+        ${nd.docPreviewUrl ? `<div style="margin-top:8px"><img src="${nd.docPreviewUrl}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--steel-200)"></div>` : ''}
+      </div>
+
+      <div class="section-title" style="margin-top:16px">Fotos de etiquetas</div>
+      <p class="hint" style="margin:-4px 0 4px;">Estas fotos no se guardan: solo se usan para extraer los datos.</p>
       <div class="foto-grid">
         ${tiles}
         <label class="add-foto-tile">
@@ -413,168 +440,286 @@ function renderTabNueva(){
         </label>
       </div>
       ${state.procesando ? `<div class="progress-bar"><div style="width:${progresoPct}%"></div></div><p class="hint">Procesando foto ${state.procesoIdx} de ${state.procesoTotal}…</p>` : ''}
-      <button class="btn btn-amber" id="btn-finalizar" ${(state.cola.filter(f=>f.estado==='pendiente').length===0 || state.procesando) ? 'disabled':''}>
-        ${state.procesando ? 'Procesando…' : `Finalizar descarga (${state.cola.filter(f=>f.estado==='pendiente').length} fotos)`}
+      <button class="btn btn-amber" id="btn-finalizar" ${(pendientesCount===0 || state.procesando) ? 'disabled':''}>
+        ${state.procesando ? 'Procesando…' : `Finalizar descarga (${pendientesCount} fotos)`}
       </button>
-      ${state.cola.some(f=>f.estado==='ok') ? `<div style="margin-top:10px"><button class="btn btn-outline" id="btn-nueva-limpiar">Empezar una descarga nueva</button></div>` : ''}
+      ${state.cola.length && !state.procesando && state.cola.every(f=>f.estado==='ok') ? `<div style="margin-top:10px"><button class="btn btn-outline" id="btn-nueva-limpiar">Empezar una descarga nueva</button></div>` : ''}
     </div>`;
+  document.getElementById('nd-nombre').oninput = e=> nd.nombre = e.target.value;
+  document.getElementById('nd-notas').oninput = e=> nd.notas = e.target.value;
+  document.getElementById('nd-doc').onchange = e=>{
+    const f = e.target.files[0]; if(!f) return;
+    nd.docFile = f; nd.docPreviewUrl = URL.createObjectURL(f);
+    renderTabNueva();
+  };
   document.getElementById('input-foto').onchange = onAddFoto;
   document.querySelectorAll('[data-del]').forEach(b=> b.onclick = ()=> onDelFoto(b.dataset.del));
   const btnFin = document.getElementById('btn-finalizar');
   if(btnFin) btnFin.onclick = onFinalizarDescarga;
   const btnLimpiar = document.getElementById('btn-nueva-limpiar');
-  if(btnLimpiar) btnLimpiar.onclick = ()=>{ state.cola=[]; renderTabNueva(); };
+  if(btnLimpiar) btnLimpiar.onclick = ()=>{ state.cola=[]; state.nuevaDescarga={nombre:'',notas:'',docFile:null,docPreviewUrl:null}; renderTabNueva(); };
 }
 function onAddFoto(e){
-  const file = e.target.files[0];
-  e.target.value='';
+  const file = e.target.files[0]; e.target.value='';
   if(!file) return;
   state.cola.push({ id:uid(), file, previewUrl:URL.createObjectURL(file), estado:'pendiente' });
   renderTabNueva();
 }
-function onDelFoto(id){
-  state.cola = state.cola.filter(f=>f.id!==id);
-  renderTabNueva();
+function onDelFoto(id){ state.cola = state.cola.filter(f=>f.id!==id); renderTabNueva(); }
+
+async function procesarUnaFoto(item, descargaId, accessToken){
+  item.estado = 'subiendo'; renderTabNueva();
+  try{
+    const comprimida = await comprimirImagen(item.file);
+    const base64 = await blobToBase64(comprimida);
+    const nombreArchivo = item.file.name || `foto-${item.id}.jpg`;
+    const res = await fetch(EDGE_FN_URL, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${accessToken}` },
+      body: JSON.stringify({ sesion_id: descargaId, archivo_origen: nombreArchivo, image_base64: base64, media_type:'image/jpeg' }),
+    });
+    const data = await res.json();
+    if(!res.ok){ throw new Error(data.error || 'Error al extraer los datos'); }
+    item.estado = 'ok'; return true;
+  }catch(err){
+    item.estado = 'error'; item.errorMsg = err.message || String(err); return false;
+  }finally{
+    state.procesoIdx++; renderTabNueva();
+  }
 }
 async function onFinalizarDescarga(){
   const pendientes = state.cola.filter(f=>f.estado==='pendiente');
   if(!pendientes.length) return;
   state.procesando = true; state.procesoTotal = pendientes.length; state.procesoIdx = 0;
   renderTabNueva();
-  const sesionId = crypto.randomUUID();
   const accessToken = state.session.access_token;
-  let okCount=0, errCount=0;
-  for(const item of pendientes){
-    item.estado = 'subiendo'; state.procesoIdx++; renderTabNueva();
-    try{
-      const comprimida = await comprimirImagen(item.file);
-      const nombreArchivo = item.file.name || `foto-${item.id}.jpg`;
-      const path = `${sesionId}/${item.id}-${nombreArchivo.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
-      const { error: upErr } = await sb.storage.from('alm-fotos').upload(path, comprimida, { contentType:'image/jpeg' });
-      if(upErr) throw upErr;
-      const { data: pub } = sb.storage.from('alm-fotos').getPublicUrl(path);
-      const base64 = await blobToBase64(comprimida);
-      const res = await fetch(EDGE_FN_URL, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${accessToken}` },
-        body: JSON.stringify({ sesion_id: sesionId, archivo_origen: nombreArchivo, foto_url: pub.publicUrl, image_base64: base64, media_type:'image/jpeg' }),
-      });
-      const data = await res.json();
-      if(!res.ok){ throw new Error(data.error || 'Error al extraer los datos'); }
-      item.estado = 'ok'; okCount++;
-    }catch(err){
-      item.estado = 'error'; item.errorMsg = err.message || String(err); errCount++;
-    }
-    renderTabNueva();
+  const nd = state.nuevaDescarga;
+
+  const { data: descarga, error: descErr } = await sb.from('alm_descargas').insert({
+    trabajador_id: state.trabajador.id,
+    numero_empleado: state.trabajador.numero_empleado,
+    trabajador_nombre: state.trabajador.nombre,
+    nombre: nd.nombre || null,
+    notas: nd.notas || null,
+  }).select().single();
+  if(descErr){ state.procesando=false; toast('Error al crear la descarga: '+descErr.message,'error'); renderTabNueva(); return; }
+
+  if(nd.docFile){
+    try{ await subirDocumentoTransporte(descarga.id, nd.docFile); }
+    catch(e){ toast('No se pudo guardar el documento de transporte: '+e.message,'error'); }
   }
-  try{ await sb.rpc('alm_marcar_duplicados', { p_sesion_id: sesionId }); }catch(e){ /* no crítico */ }
+
+  let okCount=0, errCount=0, cursor=0;
+  async function worker(){
+    while(cursor < pendientes.length){
+      const item = pendientes[cursor++];
+      const ok = await procesarUnaFoto(item, descarga.id, accessToken);
+      if(ok) okCount++; else errCount++;
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(CONCURRENCIA, pendientes.length)}, worker));
+
+  try{ await sb.rpc('alm_marcar_duplicados', { p_sesion_id: descarga.id }); }catch(e){ /* no crítico */ }
+
   state.procesando = false;
   toast(`Descarga finalizada: ${okCount} fotos extraídas${errCount?`, ${errCount} con error`:''}`, errCount?'error':'success');
-  state.misRegistros = null; // fuerza recarga
-  renderTabNueva();
+  state.misDescargas = null;
+  state.cola = []; state.nuevaDescarga = {nombre:'',notas:'',docFile:null,docPreviewUrl:null};
+  state.tab='mis'; state.detalle=null;
+  render(); bindShellEvents();
+  abrirDetalle(descarga.id, 'mis');
 }
 
 /* ============================================================
    TAB: MIS REGISTROS
    ============================================================ */
 async function renderTabMis(){
+  if(state.detalle && state.detalle.origen==='mis'){ renderDetalle(); return; }
   const c = document.getElementById('tab-content');
-  if(state.misRegistros===null){
+  if(state.misDescargas===null){
     c.innerHTML = '<div class="spinner"></div>';
-    const { data, error } = await sb.from('alm_fotos').select('*').eq('trabajador_id', state.trabajador.id).order('ts', { ascending:false }).limit(300);
-    if(error){ toast('Error al cargar tus registros: '+error.message,'error'); state.misRegistros=[]; }
-    else state.misRegistros = data || [];
+    const { data, error } = await sb.from('alm_descargas')
+      .select('*, alm_fotos(count)')
+      .eq('trabajador_id', state.trabajador.id)
+      .order('created_at', { ascending:false }).limit(200);
+    if(error){ toast('Error al cargar tus descargas: '+error.message,'error'); state.misDescargas=[]; }
+    else state.misDescargas = data || [];
   }
-  const rows = state.misRegistros;
-  if(!rows.length){ c.innerHTML = '<div class="card"><div class="empty-state">Todavía no has catalogado ninguna etiqueta.</div></div>'; return; }
-  c.innerHTML = `
-    <div class="card">
-      <h2>Mis registros (${rows.length})</h2>
-      <div class="table-scroll"><table class="admin-table">
-        <thead><tr><th>Foto</th><th>Fecha</th><th>Producto</th><th>Referencia</th><th>Lote</th><th>Cantidad</th><th>Estado</th></tr></thead>
-        <tbody>
-          ${rows.map(r=>`
-            <tr class="${r.posible_duplicado?'row-dup':''}">
-              <td class="thumb-cell">${r.foto_url?`<img src="${esc(r.foto_url)}">`:''}</td>
-              <td>${fmtFechaHora(r.ts)}</td>
-              <td>${esc(r.producto)||'—'}</td>
-              <td>${esc(r.referencia)||'—'}</td>
-              <td>${esc(r.lote)||'—'}</td>
-              <td>${esc(r.cantidad)||'—'}</td>
-              <td>${r.estado==='error' ? '<span class="badge err">Error</span>' : (r.posible_duplicado?'<span class="badge dup">Posible dup.</span>':'<span class="badge ok">OK</span>')}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table></div>
-    </div>`;
+  renderListaDescargas(state.misDescargas, 'mis', 'Mis registros');
 }
 
 /* ============================================================
    TAB: CATÁLOGO (admin)
    ============================================================ */
 async function renderTabCatalogo(){
+  if(state.detalle && state.detalle.origen==='catalogo'){ renderDetalle(); return; }
   const c = document.getElementById('tab-content');
-  if(state.catalogo===null){
+  if(state.catalogoDescargas===null){
     c.innerHTML = '<div class="spinner"></div>';
-    const { data, error } = await sb.from('alm_fotos').select('*').order('ts', { ascending:false }).limit(2000);
-    if(error){ toast('Error al cargar el catálogo: '+error.message,'error'); state.catalogo=[]; }
-    else state.catalogo = data || [];
+    const { data, error } = await sb.from('alm_descargas')
+      .select('*, alm_fotos(count)')
+      .order('created_at', { ascending:false }).limit(500);
+    if(error){ toast('Error al cargar el catálogo: '+error.message,'error'); state.catalogoDescargas=[]; }
+    else state.catalogoDescargas = data || [];
   }
   const f = state.catalogoFiltros;
-  let rows = state.catalogo.filter(r=>{
-    if(f.soloDup && !r.posible_duplicado) return false;
-    if(f.desde && r.ts < f.desde) return false;
-    if(f.hasta && r.ts > f.hasta+'T23:59:59') return false;
+  let lista = state.catalogoDescargas.filter(d=>{
+    if(f.desde && d.created_at < f.desde) return false;
+    if(f.hasta && d.created_at > f.hasta+'T23:59:59') return false;
     if(f.texto){
-      const t = f.texto.toLowerCase();
-      const hay = [r.producto,r.referencia,r.lote,r.fabricante,r.cliente,r.trabajador_nombre].some(v=> (v||'').toLowerCase().includes(t));
-      if(!hay) return false;
+      const t=f.texto.toLowerCase();
+      if(!(d.nombre||'').toLowerCase().includes(t) && !(d.trabajador_nombre||'').toLowerCase().includes(t)) return false;
     }
     return true;
   });
-  c.innerHTML = `
+  const c2 = document.getElementById('tab-content');
+  c2.innerHTML = `
     <div class="card">
-      <div class="toolbar">
-        <h2 style="margin:0">Catálogo (${rows.length} de ${state.catalogo.length})</h2>
-        <button class="btn btn-outline btn-sm" id="btn-export-csv">Exportar CSV</button>
-      </div>
+      <div class="toolbar"><h2 style="margin:0">Catálogo de descargas (${lista.length})</h2></div>
       <div class="filters-row">
-        <input type="text" id="f-texto" placeholder="Buscar producto, referencia, lote…" value="${esc(f.texto)}" style="min-width:220px">
+        <input type="text" id="f-texto" placeholder="Buscar por nombre u operario…" value="${esc(f.texto)}" style="min-width:220px">
         <input type="date" id="f-desde" value="${esc(f.desde)}">
         <input type="date" id="f-hasta" value="${esc(f.hasta)}">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--steel-700);">
-          <input type="checkbox" id="f-dup" ${f.soloDup?'checked':''}> Solo posibles duplicados
-        </label>
       </div>
-      ${rows.length ? `<div class="table-scroll"><table class="admin-table">
-        <thead><tr><th>Foto</th><th>Fecha</th><th>Operario</th>${COLUMNS.map(([,label])=>`<th>${label}</th>`).join('')}</tr></thead>
-        <tbody>
-          ${rows.map(r=>`
-            <tr class="${r.posible_duplicado?'row-dup':''}">
-              <td class="thumb-cell">${r.foto_url?`<img src="${esc(r.foto_url)}">`:''}</td>
-              <td>${fmtFechaHora(r.ts)}</td>
-              <td>${esc(r.trabajador_nombre)||'—'}</td>
-              ${COLUMNS.map(([key])=>`<td>${esc(r[key])||'—'}</td>`).join('')}
-            </tr>`).join('')}
-        </tbody>
-      </table></div>` : `<div class="empty-state">No hay registros con estos filtros.</div>`}
+      <div id="lista-descargas-slot"></div>
     </div>`;
   document.getElementById('f-texto').oninput = e=>{ state.catalogoFiltros.texto=e.target.value; renderTabCatalogo(); };
   document.getElementById('f-desde').onchange = e=>{ state.catalogoFiltros.desde=e.target.value; renderTabCatalogo(); };
   document.getElementById('f-hasta').onchange = e=>{ state.catalogoFiltros.hasta=e.target.value; renderTabCatalogo(); };
-  document.getElementById('f-dup').onchange = e=>{ state.catalogoFiltros.soloDup=e.target.checked; renderTabCatalogo(); };
-  document.getElementById('btn-export-csv').onclick = ()=> exportarCSV(rows);
+  pintarListaDescargasEn('lista-descargas-slot', lista, 'catalogo');
 }
-function exportarCSV(rows){
-  const headers = ['Fecha','Operario', ...COLUMNS.map(c=>c[1])];
+
+function renderListaDescargas(lista, origen, titulo){
+  const c = document.getElementById('tab-content');
+  c.innerHTML = `<div class="card"><h2>${titulo} (${lista.length})</h2><div id="lista-descargas-slot"></div></div>`;
+  pintarListaDescargasEn('lista-descargas-slot', lista, origen);
+}
+function pintarListaDescargasEn(slotId, lista, origen){
+  const slot = document.getElementById(slotId);
+  if(!lista.length){ slot.innerHTML = '<div class="empty-state">Todavía no hay descargas registradas.</div>'; return; }
+  slot.innerHTML = lista.map(d=>{
+    const nFotos = (d.alm_fotos && d.alm_fotos[0] && d.alm_fotos[0].count) || 0;
+    const nombre = d.nombre ? esc(d.nombre) : `Descarga del ${fmtFecha(d.created_at)}`;
+    return `
+      <button class="descarga-item" data-open="${d.id}">
+        <div>
+          <div class="nombre">${nombre}</div>
+          <div class="meta">${fmtFechaHora(d.created_at)} · ${esc(d.trabajador_nombre)||'—'} · ${nFotos} etiqueta${nFotos===1?'':'s'}
+            ${d.documento_transporte_url?'<span class="doc-chip">📄 Doc. transporte</span>':''}
+            ${d.notas ? '<span class="doc-chip" style="color:var(--steel-600);background:var(--steel-100)">📝 Notas</span>' : ''}
+          </div>
+        </div>
+        <span class="chevron">›</span>
+      </button>`;
+  }).join('');
+  slot.querySelectorAll('[data-open]').forEach(b=> b.onclick = ()=> abrirDetalle(b.dataset.open, origen));
+}
+
+/* ============================================================
+   DETALLE DE UNA DESCARGA
+   ============================================================ */
+async function abrirDetalle(id, origen){
+  state.detalle = { id, origen, descarga:null, fotos:[], cargando:true };
+  state.tab = origen; renderTab();
+  const [{ data: descarga, error: e1 }, { data: fotos, error: e2 }] = await Promise.all([
+    sb.from('alm_descargas').select('*').eq('id', id).single(),
+    sb.from('alm_fotos').select('*').eq('sesion_id', id).order('ts', { ascending:true }),
+  ]);
+  if(e1 || !descarga){ toast('No se pudo abrir la descarga','error'); state.detalle=null; renderTab(); return; }
+  state.detalle.descarga = descarga;
+  state.detalle.fotos = fotos || [];
+  state.detalle.cargando = false;
+  renderDetalle();
+}
+function volverDeDetalle(){
+  state.detalle = null;
+  renderTab();
+}
+function renderDetalle(){
+  const c = document.getElementById('tab-content');
+  const det = state.detalle;
+  if(!det || det.cargando){ c.innerHTML = '<div class="spinner"></div>'; return; }
+  const d = det.descarga; const fotos = det.fotos;
+  c.innerHTML = `
+    <button class="back-link" id="btn-volver-detalle">← Volver</button>
+    <div class="card">
+      <div class="detalle-header">
+        <div style="flex:1;min-width:220px">
+          <label class="section-title">Nombre de la descarga</label>
+          <input class="field" id="det-nombre" type="text" value="${esc(d.nombre||'')}" placeholder="Sin nombre — ${fmtFecha(d.created_at)}" style="width:100%;padding:9px 10px;border:1.5px solid var(--steel-200);border-radius:8px;font-size:14px;">
+        </div>
+        <button class="btn btn-outline btn-sm" id="btn-export-csv">Exportar CSV</button>
+      </div>
+      <p class="hint">${fmtFechaHora(d.created_at)} · Operario: ${esc(d.trabajador_nombre)||'—'} (Nº ${esc(d.numero_empleado)||'—'}) · ${fotos.length} etiqueta${fotos.length===1?'':'s'}</p>
+
+      <div class="section-title" style="margin-top:16px">Documento de transporte / albarán</div>
+      <div class="doc-transporte-box">
+        ${d.documento_transporte_url ? `
+          <img src="${esc(d.documento_transporte_url)}">
+          <a class="ver" href="${esc(d.documento_transporte_url)}" target="_blank" rel="noopener">Ver a tamaño completo ↗</a>
+        ` : `<span class="hint" style="margin:0">Todavía no se ha adjuntado ningún documento.</span>`}
+        <label class="btn btn-outline btn-sm" style="width:auto;margin-left:auto">
+          ${d.documento_transporte_url ? 'Reemplazar' : 'Adjuntar foto'}
+          <input type="file" accept="image/*" capture="environment" id="det-doc-input" style="display:none">
+        </label>
+      </div>
+
+      <div class="section-title" style="margin-top:16px">Notas</div>
+      <textarea class="field" id="det-notas" rows="3" placeholder="Sin notas" style="width:100%;padding:9px 10px;border:1.5px solid var(--steel-200);border-radius:8px;font-size:14px;">${esc(d.notas||'')}</textarea>
+      <button class="btn btn-primary btn-sm" id="btn-guardar-cabecera" style="width:auto">Guardar nombre y notas</button>
+
+      <div class="section-title" style="margin-top:20px">Etiquetas catalogadas</div>
+      ${fotos.length ? `<div class="table-scroll"><table class="admin-table">
+        <thead><tr>${COLUMNS.map(([,label])=>`<th>${label}</th>`).join('')}<th>Estado</th></tr></thead>
+        <tbody>
+          ${fotos.map(r=>`
+            <tr class="${r.posible_duplicado?'row-dup':''}">
+              ${COLUMNS.map(([key])=>`<td>${esc(r[key])||'—'}</td>`).join('')}
+              <td>${r.estado==='error' ? '<span class="badge err">Error</span>' : (r.posible_duplicado?'<span class="badge dup">Posible dup.</span>':'<span class="badge ok">OK</span>')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>` : `<div class="empty-state">Esta descarga todavía no tiene etiquetas catalogadas.</div>`}
+    </div>`;
+
+  document.getElementById('btn-volver-detalle').onclick = volverDeDetalle;
+  document.getElementById('btn-guardar-cabecera').onclick = guardarCabeceraDescarga;
+  document.getElementById('det-doc-input').onchange = onCambiarDocumentoDetalle;
+  document.getElementById('btn-export-csv').onclick = ()=> exportarCSV(fotos, d);
+}
+async function guardarCabeceraDescarga(){
+  const det = state.detalle;
+  const nombre = document.getElementById('det-nombre').value.trim();
+  const notas = document.getElementById('det-notas').value.trim();
+  const { error } = await sb.from('alm_descargas').update({ nombre: nombre||null, notas: notas||null }).eq('id', det.id);
+  if(error){ toast('Error al guardar: '+error.message,'error'); return; }
+  det.descarga.nombre = nombre||null; det.descarga.notas = notas||null;
+  state.misDescargas=null; state.catalogoDescargas=null;
+  toast('Guardado','success');
+}
+async function onCambiarDocumentoDetalle(e){
+  const file = e.target.files[0]; if(!file) return;
+  const det = state.detalle;
+  toast('Subiendo documento…');
+  try{
+    const url = await subirDocumentoTransporte(det.id, file);
+    det.descarga.documento_transporte_url = url;
+    state.misDescargas=null; state.catalogoDescargas=null;
+    toast('Documento guardado','success');
+    renderDetalle();
+  }catch(err){ toast('Error al subir el documento: '+err.message,'error'); }
+}
+function exportarCSV(fotos, descarga){
+  const headers = ['Fecha', ...COLUMNS.map(c=>c[1])];
   const lines = [headers.join(';')];
-  rows.forEach(r=>{
-    const vals = [fmtFechaHora(r.ts), r.trabajador_nombre||'', ...COLUMNS.map(([key])=> (r[key]||'').toString().replace(/;/g,','))];
+  fotos.forEach(r=>{
+    const vals = [fmtFechaHora(r.ts), ...COLUMNS.map(([key])=> (r[key]||'').toString().replace(/;/g,','))];
     lines.push(vals.map(v=> `"${String(v).replace(/"/g,'""')}"`).join(';'));
   });
   const blob = new Blob(['\ufeff'+lines.join('\n')], { type:'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `almacen_catalogo_${new Date().toISOString().slice(0,10)}.csv`;
+  const nombreArchivo = (descarga.nombre || fmtFecha(descarga.created_at)).replace(/[^a-zA-Z0-9._-]+/g,'_');
+  a.download = `almacen_${nombreArchivo}.csv`;
   a.click();
 }
 
