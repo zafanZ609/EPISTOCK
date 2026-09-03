@@ -150,9 +150,9 @@ const state = {
   ready:false, session:null, perfil:null, trabajador:null, empresa:null,
   loginMode:'trabajador', loginStep:'numero', loginNumero:'', loginNombrePreview:'', loginError:'', loginLoading:false,
   tab:'nueva',
-  nuevaDescarga:{ nombre:'', notas:'', docFile:null, docPreviewUrl:null },
+  nuevaDescarga:{ nombre:'', notas:'', docFile:null, docPreviewUrl:null, descargaId:null, _creando:null },
   cola:[],
-  procesando:false, procesoIdx:0, procesoTotal:0,
+  activeWorkers:0, finalizando:false,
   misDescargas:null,
   catalogoDescargas:null, catalogoFiltros:{ texto:'', desde:'', hasta:'' },
   detalle:null,
@@ -411,39 +411,40 @@ function renderTabNueva(){
   const tiles = state.cola.map(item => `
     <div class="foto-thumb">
       <img src="${item.previewUrl}">
-      <button class="del" data-del="${item.id}" ${state.procesando?'disabled':''}>✕</button>
+      <button class="del" data-del="${item.id}" ${(item.estado==='subiendo')?'disabled':''}>✕</button>
       ${item.estado==='ok' ? `<div class="estado ok">Extraída</div>` : ''}
       ${item.estado==='error' ? `<div class="estado err">Error</div>` : ''}
-      ${item.estado==='subiendo' ? `<div class="estado">Procesando…</div>` : ''}
+      ${(item.estado==='subiendo'||item.estado==='pendiente') ? `<div class="estado">Procesando…</div>` : ''}
     </div>`).join('');
-  const progresoPct = state.procesoTotal ? Math.round(state.procesoIdx/state.procesoTotal*100) : 0;
-  const pendientesCount = state.cola.filter(f=>f.estado==='pendiente').length;
+  const enCurso = state.cola.filter(f=>f.estado==='pendiente'||f.estado==='subiendo').length;
+  const okCount = state.cola.filter(f=>f.estado==='ok').length;
+  const errCount = state.cola.filter(f=>f.estado==='error').length;
   c.innerHTML = `
     <div class="card">
       <h2>Nueva descarga</h2>
       <div class="field"><label>Nombre de la descarga (opcional)</label>
-        <input id="nd-nombre" type="text" placeholder="Ej. Camión Zafan 03/09" value="${esc(nd.nombre)}" ${state.procesando?'disabled':''}></div>
+        <input id="nd-nombre" type="text" placeholder="Ej. Camión Zafan 03/09" value="${esc(nd.nombre)}"></div>
       <div class="field"><label>Notas (opcional)</label>
-        <textarea id="nd-notas" rows="2" placeholder="Cualquier incidencia o comentario sobre esta descarga…" ${state.procesando?'disabled':''}>${esc(nd.notas)}</textarea></div>
+        <textarea id="nd-notas" rows="2" placeholder="Cualquier incidencia o comentario sobre esta descarga…">${esc(nd.notas)}</textarea></div>
       <div class="field"><label>Foto del documento de transporte / albarán (opcional, se guarda de forma permanente)</label>
-        <input type="file" accept="image/*" capture="environment" id="nd-doc" ${state.procesando?'disabled':''}>
+        <input type="file" accept="image/*" capture="environment" id="nd-doc">
         ${nd.docPreviewUrl ? `<div style="margin-top:8px"><img src="${nd.docPreviewUrl}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--steel-200)"></div>` : ''}
       </div>
 
       <div class="section-title" style="margin-top:16px">Fotos de etiquetas</div>
-      <p class="hint" style="margin:-4px 0 4px;">Estas fotos no se guardan: solo se usan para extraer los datos.</p>
+      <p class="hint" style="margin:-4px 0 4px;">Se van procesando solas según las añades. Puedes seguir haciendo fotos sin esperar. No se guardan, solo se usan para extraer los datos.</p>
       <div class="foto-grid">
         ${tiles}
         <label class="add-foto-tile">
           <span class="plus">＋</span><span>Añadir foto</span>
-          <input type="file" accept="image/*" capture="environment" id="input-foto" style="display:none" ${state.procesando?'disabled':''}>
+          <input type="file" accept="image/*" capture="environment" id="input-foto" style="display:none">
         </label>
       </div>
-      ${state.procesando ? `<div class="progress-bar"><div style="width:${progresoPct}%"></div></div><p class="hint">Procesando foto ${state.procesoIdx} de ${state.procesoTotal}…</p>` : ''}
-      <button class="btn btn-amber" id="btn-finalizar" ${(pendientesCount===0 || state.procesando) ? 'disabled':''}>
-        ${state.procesando ? 'Procesando…' : `Finalizar descarga (${pendientesCount} fotos)`}
+      <p class="hint">${okCount} extraídas${errCount?`, ${errCount} con error`:''}${enCurso?`, ${enCurso} procesando…`:''}</p>
+      <button class="btn btn-amber" id="btn-finalizar" ${(state.cola.length===0 || state.finalizando) ? 'disabled':''}>
+        ${state.finalizando ? 'Terminando…' : `Finalizar descarga`}
       </button>
-      ${state.cola.length && !state.procesando && state.cola.every(f=>f.estado==='ok') ? `<div style="margin-top:10px"><button class="btn btn-outline" id="btn-nueva-limpiar">Empezar una descarga nueva</button></div>` : ''}
+      ${state.cola.length && !state.finalizando && enCurso===0 && okCount>0 ? `<div style="margin-top:10px"><button class="btn btn-outline" id="btn-nueva-limpiar">Empezar una descarga nueva</button></div>` : ''}
     </div>`;
   document.getElementById('nd-nombre').oninput = e=> nd.nombre = e.target.value;
   document.getElementById('nd-notas').oninput = e=> nd.notas = e.target.value;
@@ -457,19 +458,59 @@ function renderTabNueva(){
   const btnFin = document.getElementById('btn-finalizar');
   if(btnFin) btnFin.onclick = onFinalizarDescarga;
   const btnLimpiar = document.getElementById('btn-nueva-limpiar');
-  if(btnLimpiar) btnLimpiar.onclick = ()=>{ state.cola=[]; state.nuevaDescarga={nombre:'',notas:'',docFile:null,docPreviewUrl:null}; renderTabNueva(); };
+  if(btnLimpiar) btnLimpiar.onclick = ()=>{ state.cola=[]; state.nuevaDescarga={nombre:'',notas:'',docFile:null,docPreviewUrl:null,descargaId:null,_creando:null}; renderTabNueva(); };
 }
 function onAddFoto(e){
   const file = e.target.files[0]; e.target.value='';
   if(!file) return;
   state.cola.push({ id:uid(), file, previewUrl:URL.createObjectURL(file), estado:'pendiente' });
   renderTabNueva();
+  lanzarProcesamiento();
 }
 function onDelFoto(id){ state.cola = state.cola.filter(f=>f.id!==id); renderTabNueva(); }
 
-async function procesarUnaFoto(item, descargaId, accessToken){
-  item.estado = 'subiendo'; renderTabNueva();
+// Crea la descarga en la base de datos la primera vez que hace falta
+// (primera foto o al finalizar), y comparte la misma creación si llegan
+// varias fotos casi a la vez.
+function asegurarDescarga(){
+  const nd = state.nuevaDescarga;
+  if(nd.descargaId) return Promise.resolve(nd.descargaId);
+  if(!nd._creando){
+    nd._creando = (async ()=>{
+      const { data, error } = await sb.from('alm_descargas').insert({
+        trabajador_id: state.trabajador.id,
+        numero_empleado: state.trabajador.numero_empleado,
+        trabajador_nombre: state.trabajador.nombre,
+        nombre: nd.nombre || null,
+        notas: nd.notas || null,
+      }).select().single();
+      if(error) throw error;
+      nd.descargaId = data.id;
+      return data.id;
+    })();
+  }
+  return nd._creando;
+}
+
+// Va lanzando el procesado de fotos pendientes sin bloquear la cola:
+// como mucho CONCURRENCIA a la vez, y arranca la siguiente en cuanto una termina.
+function lanzarProcesamiento(){
+  while(state.activeWorkers < CONCURRENCIA){
+    const item = state.cola.find(f=>f.estado==='pendiente');
+    if(!item) break;
+    item.estado = 'subiendo';
+    state.activeWorkers++;
+    procesarItemAsync(item).finally(()=>{
+      state.activeWorkers--;
+      lanzarProcesamiento();
+    });
+  }
+  renderTabNueva();
+}
+async function procesarItemAsync(item){
   try{
+    const descargaId = await asegurarDescarga();
+    const accessToken = state.session.access_token;
     const comprimida = await comprimirImagen(item.file);
     const base64 = await blobToBase64(comprimida);
     const nombreArchivo = item.file.name || `foto-${item.id}.jpg`;
@@ -480,54 +521,46 @@ async function procesarUnaFoto(item, descargaId, accessToken){
     });
     const data = await res.json();
     if(!res.ok){ throw new Error(data.error || 'Error al extraer los datos'); }
-    item.estado = 'ok'; return true;
+    item.estado = 'ok';
   }catch(err){
-    item.estado = 'error'; item.errorMsg = err.message || String(err); return false;
-  }finally{
-    state.procesoIdx++; renderTabNueva();
+    item.estado = 'error'; item.errorMsg = err.message || String(err);
   }
-}
-async function onFinalizarDescarga(){
-  const pendientes = state.cola.filter(f=>f.estado==='pendiente');
-  if(!pendientes.length) return;
-  state.procesando = true; state.procesoTotal = pendientes.length; state.procesoIdx = 0;
   renderTabNueva();
-  const accessToken = state.session.access_token;
-  const nd = state.nuevaDescarga;
+}
 
-  const { data: descarga, error: descErr } = await sb.from('alm_descargas').insert({
-    trabajador_id: state.trabajador.id,
-    numero_empleado: state.trabajador.numero_empleado,
-    trabajador_nombre: state.trabajador.nombre,
-    nombre: nd.nombre || null,
-    notas: nd.notas || null,
-  }).select().single();
-  if(descErr){ state.procesando=false; toast('Error al crear la descarga: '+descErr.message,'error'); renderTabNueva(); return; }
+async function onFinalizarDescarga(){
+  if(!state.cola.length) return;
+  state.finalizando = true; renderTabNueva();
+
+  // Espera a que terminen las fotos que sigan en curso (no bloquea nuevas
+  // fotos añadidas antes de llegar aquí, solo espera a que acaben).
+  while(state.cola.some(f=>f.estado==='pendiente'||f.estado==='subiendo')){
+    await new Promise(r=>setTimeout(r, 300));
+  }
+
+  let descargaId;
+  try{ descargaId = await asegurarDescarga(); }
+  catch(e){ state.finalizando=false; toast('Error al crear la descarga: '+e.message,'error'); renderTabNueva(); return; }
+
+  const nd = state.nuevaDescarga;
+  await sb.from('alm_descargas').update({ nombre: nd.nombre||null, notas: nd.notas||null }).eq('id', descargaId);
 
   if(nd.docFile){
-    try{ await subirDocumentoTransporte(descarga.id, nd.docFile); }
+    try{ await subirDocumentoTransporte(descargaId, nd.docFile); }
     catch(e){ toast('No se pudo guardar el documento de transporte: '+e.message,'error'); }
   }
 
-  let okCount=0, errCount=0, cursor=0;
-  async function worker(){
-    while(cursor < pendientes.length){
-      const item = pendientes[cursor++];
-      const ok = await procesarUnaFoto(item, descarga.id, accessToken);
-      if(ok) okCount++; else errCount++;
-    }
-  }
-  await Promise.all(Array.from({length: Math.min(CONCURRENCIA, pendientes.length)}, worker));
+  try{ await sb.rpc('alm_marcar_duplicados', { p_sesion_id: descargaId }); }catch(e){ /* no crítico */ }
 
-  try{ await sb.rpc('alm_marcar_duplicados', { p_sesion_id: descarga.id }); }catch(e){ /* no crítico */ }
-
-  state.procesando = false;
+  const okCount = state.cola.filter(f=>f.estado==='ok').length;
+  const errCount = state.cola.filter(f=>f.estado==='error').length;
+  state.finalizando = false;
   toast(`Descarga finalizada: ${okCount} fotos extraídas${errCount?`, ${errCount} con error`:''}`, errCount?'error':'success');
   state.misDescargas = null;
-  state.cola = []; state.nuevaDescarga = {nombre:'',notas:'',docFile:null,docPreviewUrl:null};
+  state.cola = []; state.nuevaDescarga = {nombre:'',notas:'',docFile:null,docPreviewUrl:null,descargaId:null,_creando:null};
   state.tab='mis'; state.detalle=null;
   render(); bindShellEvents();
-  abrirDetalle(descarga.id, 'mis');
+  abrirDetalle(descargaId, 'mis');
 }
 
 /* ============================================================
@@ -652,6 +685,9 @@ function renderDetalle(){
       </div>
       <p class="hint">${fmtFechaHora(d.created_at)} · Operario: ${esc(d.trabajador_nombre)||'—'} (Nº ${esc(d.numero_empleado)||'—'}) · ${fotos.length} etiqueta${fotos.length===1?'':'s'}</p>
 
+      <div class="section-title" style="margin-top:16px">Resumen por referencia</div>
+      ${renderResumenReferencia(fotos)}
+
       <div class="section-title" style="margin-top:16px">Documento de transporte / albarán</div>
       <div class="doc-transporte-box">
         ${d.documento_transporte_url ? `
@@ -686,6 +722,32 @@ function renderDetalle(){
   document.getElementById('det-doc-input').onchange = onCambiarDocumentoDetalle;
   document.getElementById('btn-export-csv').onclick = ()=> exportarCSV(fotos, d);
 }
+// Agrupa las etiquetas de la descarga por referencia: nº de cajas (nº de
+// etiquetas de esa referencia) y cantidad total (suma del primer número
+// que aparezca en el campo "cantidad" de cada etiqueta).
+function resumenPorReferencia(fotos){
+  const map = new Map();
+  fotos.forEach(r=>{
+    const ref = (r.referencia||'').trim() || '(sin referencia)';
+    const match = (r.cantidad||'').match(/\d+/);
+    const n = match ? parseInt(match[0],10) : 0;
+    if(!map.has(ref)) map.set(ref, { cajas:0, cantidad:0 });
+    const e = map.get(ref);
+    e.cajas++; e.cantidad += n;
+  });
+  return Array.from(map.entries())
+    .map(([referencia,v])=>({ referencia, cajas:v.cajas, cantidad:v.cantidad }))
+    .sort((a,b)=> b.cajas - a.cajas);
+}
+function renderResumenReferencia(fotos){
+  if(!fotos.length) return `<p class="hint" style="margin:0 0 4px">Sin etiquetas todavía.</p>`;
+  const resumen = resumenPorReferencia(fotos);
+  return `<div class="table-scroll"><table class="admin-table">
+    <thead><tr><th>Referencia</th><th>Nº cajas</th><th>Cantidad total</th></tr></thead>
+    <tbody>${resumen.map(r=>`<tr><td>${esc(r.referencia)}</td><td>${r.cajas}</td><td>${r.cantidad}</td></tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
 async function guardarCabeceraDescarga(){
   const det = state.detalle;
   const nombre = document.getElementById('det-nombre').value.trim();
